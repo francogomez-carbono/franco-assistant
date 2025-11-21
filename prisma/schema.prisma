@@ -1,0 +1,89 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- TUS 4 PILARES ---
+
+model Rutina {
+  id          Int      @id @default(autoincrement())
+  bloque      String   
+  pilar       Pilar
+  horaInicio  String   
+  dias        Int[]    
+  activo      Boolean  @default(true)
+}
+
+model LogEstado {
+  id            Int      @id @default(autoincrement())
+  timestamp     DateTime @default(now())
+  energia       Int?     
+  concentracion Int?     
+  inputUsuario  String?  
+  notasIA       String?  
+}
+
+model LogCiclo {
+  id          Int       @id @default(autoincrement())
+  tarea       String
+  pilar       Pilar
+  inicio      DateTime  @default(now())
+  fin         DateTime?
+  estado      EstadoCiclo @default(EN_PROGRESO)
+  resultado   String?
+}
+
+model LogHabito {
+  id          Int      @id @default(autoincrement())
+  nombre      String
+  timestamp   DateTime @default(now())
+  estado      EstadoHabito
+  snoozeCount Int      @default(0)
+}
+
+model LogConsumo {
+  id          Int      @id @default(autoincrement())
+  timestamp   DateTime @default(now())
+  tipo        TipoConsumo
+  descripcion String
+  cantidad    Float?   
+}
+
+model LogSocial {
+  id          Int      @id @default(autoincrement())
+  timestamp   DateTime @default(now())
+  tipo        String
+  duracion    Int?
+  valoracion  Int?
+}
+
+// --- ENUMS ---
+
+enum Pilar {
+  PLATA
+  PENSAR
+  FISICO
+  SOCIAL
+}
+
+enum EstadoCiclo {
+  EN_PROGRESO
+  COMPLETADO
+  BURNOUT
+  INTERRUMPIDO
+}
+
+enum EstadoHabito {
+  HECHO
+  POSPUESTO
+  SKIPPED
+}
+
+enum TipoConsumo {
+  COMIDA
+  LIQUIDO
+}
