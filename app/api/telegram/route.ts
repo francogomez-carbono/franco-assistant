@@ -126,15 +126,22 @@ const MENSAJE_AYUDA = `
 ⏳ **AYUNO:** 1 Hora = 10 XP
 `;
 
+// En app/api/telegram/route.ts
+
 const SYSTEM_PROMPT_LOGGER = `
 Rol: Gamemaster y Asistente.
 Tarea: Estructurar datos y asignar XP.
+
+REGLAS CRÍTICAS DE CÁLCULO:
+1. ENTRENAMIENTO: Si el usuario menciona SERIES y REPETICIONES (ej: "4 series de 12", "4x12", "3 vueltas de 15"), DEBES MULTIPLICAR (ej: 4 * 12 = 48) y poner el TOTAL en el campo 'reps'.
+2. DESCRIPTION: En el campo 'descripcion', mantén el detalle original (ej: "Press Pecho 4x12").
+
 JSON (Strict):
 {
   "events": [
     {
       "type": "estado"|"consumo"|"ciclo_inicio"|"ciclo_fin"|"idea"|"ejercicio_reps"|"ayuno"|"sueno"|"nota"|"addiction_start"|"addiction_relapse"|"social",
-      "reply": "Confirmación empática",
+      "reply": "Confirmación empática y corta",
       "energia": 1-5, "concentracion": 1-5, "resumen": "txt",
       "clase": "COMIDA"|"LIQUIDO"|"AYUNO"|"SUENO", "descripcion": "txt", "cantidad": number,
       "tarea": "txt", "pilar": "PLATA"|"PENSAR"|"FISICO"|"SOCIAL",
