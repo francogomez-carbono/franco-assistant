@@ -56,8 +56,8 @@ export default async function Home() {
         {/* HEADER */}
         <header className="mb-6 pt-4 text-center">
           <div className="relative inline-block mb-4">
-            <h1 className="text-3xl font-black tracking-tighter bg-gradient-to-b from-white to-neutral-500 bg-clip-text text-transparent">
-              LIFE <span className="text-purple-500">OS</span>
+            <h1 className="text-4xl font-black tracking-tighter bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 bg-clip-text text-transparent">
+              LIFE OS
             </h1>
             <span className="absolute -top-1 -right-6 bg-[#111] text-[9px] px-1.5 py-0.5 rounded border border-[#333] text-neutral-400">BETA</span>
           </div>
