@@ -63,18 +63,21 @@ export default async function Home() {
           </div>
           
           {/* TARJETA DE NIVEL GLOBAL */}
-          <div className="bg-[#111] border border-[#222] p-4 rounded-2xl shadow-2xl relative overflow-hidden group">
-            <div className="flex justify-between items-end mb-2 relative z-10">
+          <div className="bg-[#111] border border-[#222] p-5 rounded-2xl shadow-2xl relative overflow-hidden group">
+            <div className="flex justify-between items-center mb-3 relative z-10">
+              {/* Izquierda: Nombre limpio */}
               <div className="text-left">
-                <p className="text-[10px] text-neutral-500 font-bold tracking-widest mb-1">PLAYER</p>
-                <p className="text-lg font-bold text-white">FRANCO</p>
+                <p className="text-2xl font-black text-white tracking-wider">FRANCO</p>
               </div>
-              <div className="text-right">
-                <p className="text-[10px] text-neutral-500 font-bold tracking-widest mb-1">LVL CUENTA</p>
-                <p className="text-2xl font-black text-yellow-400">{global.nivel}</p>
+              
+              {/* Derecha: LVL + Número dorado */}
+              <div className="text-right flex items-baseline gap-1.5">
+                <span className="text-xs font-bold text-neutral-600 tracking-widest">LVL</span>
+                <p className="text-3xl font-black text-yellow-400 leading-none">{global.nivel}</p>
               </div>
             </div>
             
+            {/* Barra de XP */}
             <div className="relative z-10">
                 <div className="flex justify-between text-[10px] text-neutral-600 font-mono mb-1.5">
                     <span>XP TOTAL: {totalXP}</span>
