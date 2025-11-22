@@ -8,9 +8,13 @@ import { ShieldCheck } from "lucide-react";
 const prisma = new PrismaClient();
 export const dynamic = 'force-dynamic';
 
+// TU ID REAL (Asegúrate que sea este, es el que usaste en el seed)
+const MY_TELEGRAM_ID = "5002389519";
+
 async function getData() {
-  const user = await prisma.user.findFirst({
-    where: { stats: { isNot: null } }, 
+  // CAMBIO: Buscamos específicamente TU usuario
+  const user = await prisma.user.findUnique({
+    where: { telegramId: MY_TELEGRAM_ID }, 
     include: {
       stats: true,
       logsCiclo: { orderBy: { inicio: 'desc' }, take: 100, where: { estado: 'COMPLETADO' } },
@@ -23,7 +27,15 @@ async function getData() {
 export default async function Dashboard() {
   const user = await getData();
 
-  if (!user || !user.stats) return <div className="p-8 text-white">Cargando...</div>;
+  // Si no te encuentra, mostramos mensaje de ayuda
+  if (!user || !user.stats) {
+    return (
+      <div className="p-8 text-white flex flex-col items-center justify-center h-screen">
+        <h2 className="text-xl font-bold">Usuario no encontrado</h2>
+        <p className="text-neutral-400">Asegúrate de hablarle al bot en Telegram primero.</p>
+      </div>
+    );
+  }
 
   const energyData = user.logsEstado.map(log => ({
     fecha: log.timestamp.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' }),
@@ -31,26 +43,21 @@ export default async function Dashboard() {
     foco: log.concentracion || 0
   }));
 
-  // FIX: Eliminado 'p-4 md:p-8' para evitar doble espacio arriba
   return (
-    <div className="space-y-6 w-full max-w-[1600px] mx-auto">
-      {/* HEADER */}
+    <div className="space-y-6 w-full">
       <div className="flex flex-col space-y-2">
         <h1 className="text-3xl font-bold tracking-tight text-white">General</h1>
       </div>
 
-      {/* 1. STATS GRID */}
       <div className="w-full">
          <StatsGrid stats={user.stats} />
       </div>
       
-      {/* 2. CHARTS SECTION */}
       <div className="grid gap-6 grid-cols-1 lg:grid-cols-3 w-full">
         <EnergyChart data={energyData} />
         <XPDonutChart stats={user.stats} />
       </div>
 
-      {/* 3. BOTTOM SECTION */}
       <div className="grid gap-6 grid-cols-1 lg:grid-cols-2 w-full">
         <Card className="border-neutral-800 bg-neutral-900/50 text-neutral-100 h-full">
           <CardHeader>

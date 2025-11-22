@@ -21,13 +21,15 @@ model User {
   logsConsumo LogConsumo[]
   logsSocial LogSocial[]
   logsIdea   LogIdea[]
+  
+  // RELACIÓN AGREGADA (Soluciona el error P1012)
+  questPresets QuestPreset[]
 }
 
 // 📊 ESTADÍSTICAS
 model UserStats {
-  id         String   @id @default(cuid()) // <--- ESTO DEBE SER STRING
+  id         String   @id @default(cuid())
   
-  // XP y Nivel por Pilar
   xpPlata    Int      @default(0)
   lvlPlata   Int      @default(1)
   xpPensar   Int      @default(0)
@@ -37,7 +39,6 @@ model UserStats {
   xpSocial   Int      @default(0)
   lvlSocial  Int      @default(1)
 
-  // Rachas
   rachaPlata  Int      @default(0)
   lastPlata   DateTime @default(now())
   rachaPensar Int      @default(0)
@@ -122,22 +123,31 @@ model LogIdea {
   user      User     @relation(fields: [userId], references: [id])
 }
 
-// CORRECCIÓN AQUÍ: Agregamos 'persona' y 'actividad'
 model LogSocial {
   id         String   @id @default(cuid())
   timestamp  DateTime @default(now())
   tipo       String
-  persona    String?  // <--- ESTO FALTABA
-  actividad  String?  // <--- Agregado por si acaso
+  persona    String?
+  actividad  String?
   duracion   Int?
   valoracion Int?
   xpGanada   Int      @default(0)
-
   userId     String
   user       User     @relation(fields: [userId], references: [id])
 }
 
-// ENUMS
+// �� PRESETS DE MISIONES
+model QuestPreset {
+  id        String   @id @default(cuid())
+  title     String
+  xp        Int
+  pilar     Pilar
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, pilar])
+}
+
 enum Pilar {
   PLATA
   PENSAR
