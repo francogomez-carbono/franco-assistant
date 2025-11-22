@@ -10,21 +10,43 @@ const prisma = new PrismaClient();
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const SYSTEM_PROMPT = `
-Eres el asistente de Franco. Tu objetivo es categorizar input en JSON.
-CATEGORÍAS:
-1. ESTADO: {"type": "estado", "energia": 1-5, "concentracion": 1-5, "resumen": "string"}
-2. CONSUMO: {"type": "consumo", "clase": "COMIDA" o "LIQUIDO", "descripcion": "string", "cantidad": number o null}
-3. CICLO_INICIO: {"type": "ciclo_inicio", "tarea": "string", "pilar": "PLATA" o "PENSAR"}
-4. CICLO_FIN: {"type": "ciclo_fin", "resultado": "string"}
-Si no encaja: {"type": "nota", "texto": "string"}
-IMPORTANTE: Responde SOLO el objeto JSON.
+Eres el asistente personal de Franco. Tu trabajo es estructurar su vida en base a sus mensajes.
+Recibirás texto natural y deberás convertirlo en una LISTA de eventos JSON.
+
+TUS REGLAS DE DEDUCCIÓN (NO PIDA EL PILAR, DEDÚCELO):
+1. PILAR "PLATA": Todo lo relacionado con Trabajo, Coding, Automatización, Bolsa, Marketing, Negocios o Generar Dinero.
+2. PILAR "PENSAR": Todo lo relacionado con Estudiar, Leer, Aprender, Planificar, Escribir o Reflexionar.
+3. PILAR "FISICO": Todo lo relacionado con Entrenar, Gimnasio, Deportes, Dormir o Salud.
+4. PILAR "SOCIAL": Todo lo relacionado con Amigos, Pareja, Networking, Salidas o Familia.
+
+CATEGORÍAS DE EVENTOS:
+1. ESTADO: Sentimientos, nivel de energía (1-5), nivel de foco (1-5).
+   JSON: {"type": "estado", "energia": number, "concentracion": number, "resumen": "string"}
+   
+2. CONSUMO: Comida o Bebida.
+   JSON: {"type": "consumo", "clase": "COMIDA" o "LIQUIDO", "descripcion": "string", "cantidad": number (ml) o null}
+
+3. CICLO_INICIO: Empezar una actividad. DEDUCE EL PILAR AUTOMÁTICAMENTE.
+   JSON: {"type": "ciclo_inicio", "tarea": "string", "pilar": "PLATA" | "PENSAR" | "FISICO" | "SOCIAL"}
+
+4. CICLO_FIN: Terminar lo que estaba haciendo.
+   JSON: {"type": "ciclo_fin", "resultado": "string"}
+
+SI EL MENSAJE TIENE MÚLTIPLES ACCIONES, GENERA MÚLTIPLES EVENTOS.
+
+FORMATO DE RESPUESTA JSON (ESTRICTO):
+{
+  "events": [
+    { ...evento1... },
+    { ...evento2... }
+  ]
+}
 `;
 
 const handleMessage = async (ctx: any) => {
     if (!ctx.message.text) return;
     const text = ctx.message.text;
     
-    // Feedback visual (escribiendo...)
     await bot?.api.sendChatAction(ctx.chat.id, "typing");
 
     try {
@@ -32,13 +54,12 @@ const handleMessage = async (ctx: any) => {
             model: "gpt-4o-mini",
             messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: text }],
             temperature: 0,
-            // ESTO ES NUEVO: Fuerza a la IA a devolver JSON válido sí o sí
             response_format: { type: "json_object" }
         });
 
         const raw = completion.choices[0].message.content || "{}";
         
-        // ESTO ES NUEVO: Cirugía para extraer solo el JSON si la IA agrega texto extra
+        // Limpieza de JSON (Cirugía)
         const firstBrace = raw.indexOf('{');
         const lastBrace = raw.lastIndexOf('}');
         
@@ -47,37 +68,45 @@ const handleMessage = async (ctx: any) => {
             const cleanJson = raw.substring(firstBrace, lastBrace + 1);
             data = JSON.parse(cleanJson);
         } else {
-            data = JSON.parse(raw); // Intento directo si no encuentra llaves
+            data = JSON.parse(raw);
         }
 
-        let respuesta = "";
+        const eventos = data.events || [data]; 
+        let respuestasArray: string[] = [];
 
-        switch (data.type) {
-            case "estado":
-                await prisma.logEstado.create({ data: { energia: data.energia, concentracion: data.concentracion, inputUsuario: text, notasIA: data.resumen } });
-                respuesta = `✅ E${data.energia}/C${data.concentracion}`;
-                break;
-            case "consumo":
-                await prisma.logConsumo.create({ data: { tipo: data.clase, descripcion: data.descripcion, cantidad: data.cantidad } });
-                respuesta = `🍎 ${data.descripcion}`;
-                break;
-            case "ciclo_inicio":
-                await prisma.logCiclo.create({ data: { tarea: data.tarea, pilar: data.pilar, estado: "EN_PROGRESO" } });
-                respuesta = `🚀 ${data.tarea}`;
-                break;
-            case "ciclo_fin":
-                const ultimo = await prisma.logCiclo.findFirst({ where: { fin: null }, orderBy: { inicio: 'desc' } });
-                if (ultimo) {
-                    await prisma.logCiclo.update({ where: { id: ultimo.id }, data: { fin: new Date(), estado: "COMPLETADO", resultado: data.resultado } });
-                    respuesta = "🏁 Fin ciclo.";
-                } else { respuesta = "⚠️ Sin ciclo activo."; }
-                break;
-            default: 
-                respuesta = "📝 Nota guardada.";
+        for (const evento of eventos) {
+            switch (evento.type) {
+                case "estado":
+                    await prisma.logEstado.create({ data: { energia: evento.energia, concentracion: evento.concentracion, inputUsuario: text, notasIA: evento.resumen } });
+                    respuestasArray.push(`✅ E${evento.energia}/C${evento.concentracion} - ${evento.resumen}`);
+                    break;
+                case "consumo":
+                    await prisma.logConsumo.create({ data: { tipo: evento.clase, descripcion: evento.descripcion, cantidad: evento.cantidad } });
+                    respuestasArray.push(`🍎 ${evento.descripcion}`);
+                    break;
+                case "ciclo_inicio":
+                    // Aquí la IA ya dedujo el pilar
+                    await prisma.logCiclo.create({ data: { tarea: evento.tarea, pilar: evento.pilar, estado: "EN_PROGRESO" } });
+                    respuestasArray.push(`🚀 Iniciando: ${evento.tarea} (${evento.pilar})`);
+                    break;
+                case "ciclo_fin":
+                    const ultimo = await prisma.logCiclo.findFirst({ where: { fin: null }, orderBy: { inicio: 'desc' } });
+                    if (ultimo) {
+                        await prisma.logCiclo.update({ where: { id: ultimo.id }, data: { fin: new Date(), estado: "COMPLETADO", resultado: evento.resultado } });
+                        respuestasArray.push(`🏁 Ciclo cerrado: ${ultimo.tarea}`);
+                    } else { 
+                        respuestasArray.push("⚠️ No tenías nada abierto."); 
+                    }
+                    break;
+                default: 
+                    if (evento.texto) respuestasArray.push("📝 Nota guardada.");
+            }
         }
-        await ctx.reply(respuesta);
+
+        await ctx.reply(respuestasArray.join("\n"));
+
     } catch (e) {
-        console.error("ERROR REAL:", e); // Esto aparecerá en los logs de Vercel si falla
+        console.error("ERROR:", e);
         await ctx.reply("❌ Error procesando.");
     }
 };
