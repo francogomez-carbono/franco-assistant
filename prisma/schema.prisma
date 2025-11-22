@@ -100,4 +100,6 @@ enum EstadoHabito {
 enum TipoConsumo {
   COMIDA
   LIQUIDO
+  AYUNO
+  SUENO
 }

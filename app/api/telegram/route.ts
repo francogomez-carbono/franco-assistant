@@ -12,25 +12,21 @@ const token = process.env.TELEGRAM_TOKEN;
 const bot = token ? new Bot(token) : null;
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// --- SISTEMA DE GAMIFICATION ---
+// --- SISTEMA DE XP ---
 async function sumarXP(puntos: number) {
-    // 1. Buscamos al usuario (o lo creamos si es la primera vez)
     let stats = await prisma.userStats.findFirst();
     if (!stats) {
         stats = await prisma.userStats.create({ data: { xp: 0, level: 1 } });
     }
 
-    // 2. Calculamos nueva XP
     const nuevaXP = stats.xp + puntos;
-    const nuevoNivel = Math.floor(nuevaXP / 1000) + 1; // Sube de nivel cada 1000 XP
+    const nuevoNivel = Math.floor(nuevaXP / 1000) + 1;
     let mensajeLevelUp = "";
 
-    // 3. Verificamos si subió de nivel
     if (nuevoNivel > stats.level) {
-        mensajeLevelUp = `\n🎉 **¡LEVEL UP!** Ahora sos Nivel ${nuevoNivel}. ¡Sos una máquina! 🦾`;
+        mensajeLevelUp = `\n🎉 **¡LEVEL UP!** Ahora sos Nivel ${nuevoNivel}. 🦾`;
     }
 
-    // 4. Guardamos
     await prisma.userStats.update({
         where: { id: stats.id },
         data: { xp: nuevaXP, level: nuevoNivel }
@@ -40,45 +36,48 @@ async function sumarXP(puntos: number) {
 }
 
 const MENSAJE_AYUDA = `
-🎮 **LIFE OS - COMANDOS**
+🎮 **REGLAS DE JUEGO (XP)**
 
-🧠 **SEGUNDO CEREBRO:**
-• _"Idea: Crear una app de..."_
-• _"Recordar buscar precios de..."_
+🧠 **DEEP WORK:**
+• Trabajar > 2 horas seguidas = **100 XP** 🏆
+• Trabajar < 2 horas = 50 XP
 
-📊 **STATS:**
-• _"¿Qué nivel soy?"_
-• _"/nivel"_
+🛌 **SUEÑO REPARADOR:**
+• Dormir > 7 horas = **100 XP** 💤
+• Dormir menos = 0 XP
 
-📝 **REGISTRO:**
-• _"Comí..."_ (+10 XP)
-• _"Arranco a..."_ (+15 XP)
-• _"Terminé..."_ (+50 XP) 🏆
+💪 **ENTRENAMIENTO:**
+• 1 Rep = 1 XP (Mínimo 10 reps)
+
+⏳ **AYUNO:**
+• 1 Hora = 10 XP (Mínimo 12 hs)
 `;
 
 const SYSTEM_PROMPT = `
-Rol: Asistente personal de Franco (Life OS + Gamification).
-Tarea: Estructurar datos, calcular métricas y motivar.
+Rol: Asistente personal y Gamemaster de Franco.
+Tarea: Estructurar datos y calcular reglas.
 Tono: Argentino suave, compañero.
 
-NUEVA CATEGORÍA "IDEA":
-- Si el usuario comparte un pensamiento, link, recordatorio o epifanía que NO es una tarea inmediata -> Tipo: "idea".
+REGLAS DE INPUT:
+1. SUEÑO: Si dice "Dormí X horas", extrae las horas.
+2. EJERCICIO: Si dice "Hice X flexiones/reps", extrae las reps.
+3. AYUNO: Si dice "Ayuné X horas", extrae horas.
 
-REGLAS DE RESPUESTA:
-- Confirma la acción.
-- Sé breve y empático.
-- NO menciones la XP en tu texto generado (eso lo agrega el sistema automáticamente al final).
+REGLAS DE NORMALIZACIÓN:
+- Peso: gramos / 1000 = KG.
+- Volumen: ml / 1000 = LITROS.
 
 JSON (Strict):
 {
   "events": [
     {
-      "type": "estado"|"consumo"|"ciclo_inicio"|"ciclo_fin"|"idea"|"nota",
-      "reply": "Tu respuesta conversacional",
+      "type": "estado"|"consumo"|"ciclo_inicio"|"ciclo_fin"|"idea"|"ejercicio_reps"|"ayuno"|"sueno"|"nota",
+      "reply": "Confirmación + Empatía",
       "energia": 1-5, "concentracion": 1-5, "resumen": "txt",
-      "clase": "COMIDA"|"LIQUIDO", "descripcion": "txt", "cantidad": num,
+      "clase": "COMIDA"|"LIQUIDO"|"AYUNO"|"SUENO", "descripcion": "txt", "cantidad": number,
       "tarea": "txt", "pilar": "PLATA"|"PENSAR"|"FISICO"|"SOCIAL",
-      "resultado": "txt", "texto": "txt", "tags_idea": "txt"
+      "resultado": "txt", "texto": "txt", "tags_idea": "txt",
+      "reps": number, "horas_ayuno": number, "horas_sueno": number
     }
   ]
 }
@@ -88,17 +87,13 @@ const handleMessage = async (ctx: any) => {
     if (!ctx.message.text) return;
     const text = ctx.message.text;
 
-    // --- COMANDOS RÁPIDOS ---
     if (text === "/comandos" || text === "/ayuda") {
         await ctx.reply(MENSAJE_AYUDA, { parse_mode: "Markdown" });
         return;
     }
-    if (text === "/nivel" || text.toLowerCase().includes("que nivel soy")) {
+    if (text === "/nivel") {
         const stats = await prisma.userStats.findFirst();
-        const xp = stats?.xp || 0;
-        const level = stats?.level || 1;
-        const falta = 1000 - (xp % 1000);
-        await ctx.reply(`🏆 **PERFIL DE JUGADOR**\n\n👤 Nivel: ${level}\n✨ XP Total: ${xp}\n🚀 Falta para Nivel ${level + 1}: ${falta} XP`);
+        await ctx.reply(`🏆 Nivel: ${stats?.level || 1} | XP: ${stats?.xp || 0}`);
         return;
     }
 
@@ -106,8 +101,8 @@ const handleMessage = async (ctx: any) => {
         const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini",
             messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: text }],
-            temperature: 0.6, 
-            max_tokens: 350,
+            temperature: 0.5,
+            max_tokens: 400,
             response_format: { type: "json_object" }
         });
 
@@ -127,8 +122,58 @@ const handleMessage = async (ctx: any) => {
 
         for (const evento of eventos) {
             let xpGanada = 0;
+            let notaExtra = "";
 
             switch (evento.type) {
+                // --- SUEÑO REPARADOR ---
+                case "sueno":
+                    const horasSueno = evento.horas_sueno || evento.cantidad || 0;
+                    if (horasSueno > 7) {
+                        xpGanada = 100; // ¡Bono Recuperación!
+                        notaExtra = " (Recovery Bonus 💤)";
+                    }
+                    await prisma.logConsumo.create({ 
+                        data: { tipo: "SUENO", descripcion: `Sueño de ${horasSueno}hs`, cantidad: horasSueno } 
+                    });
+                    break;
+
+                // --- CICLO FIN (DEEP WORK CHECK) ---
+                case "ciclo_fin":
+                    const ultimo = await prisma.logCiclo.findFirst({ where: { fin: null }, orderBy: { inicio: 'desc' } });
+                    if (ultimo) {
+                        const ahora = new Date();
+                        const inicio = new Date(ultimo.inicio);
+                        // Calculamos diferencia en horas (milisegundos / 1000 / 60 / 60)
+                        const duracionHoras = (ahora.getTime() - inicio.getTime()) / (1000 * 60 * 60);
+
+                        await prisma.logCiclo.update({ where: { id: ultimo.id }, data: { fin: ahora, estado: "COMPLETADO", resultado: evento.resultado } });
+
+                        if (duracionHoras > 2) {
+                            xpGanada = 100; // ¡Bono Deep Work!
+                            notaExtra = ` (Deep Work de ${duracionHoras.toFixed(1)}hs 🔥)`;
+                        } else {
+                            xpGanada = 50; // Cierre normal
+                        }
+                    }
+                    break;
+
+                // --- RESTO DE REGLAS ---
+                case "ejercicio_reps":
+                    const reps = evento.reps || 0;
+                    if (reps >= 10) {
+                        xpGanada = reps; 
+                        await prisma.logCiclo.create({ data: { tarea: `Ejercicio: ${evento.descripcion || 'Reps'}`, pilar: "FISICO", estado: "COMPLETADO", resultado: `${reps} reps` } });
+                    }
+                    break;
+                case "ayuno":
+                    const horasAyuno = evento.horas_ayuno || evento.cantidad || 0;
+                    if (horasAyuno >= 12) {
+                        xpGanada = horasAyuno * 10;
+                        await prisma.logConsumo.create({ data: { tipo: "AYUNO", descripcion: `Ayuno ${horasAyuno}hs`, cantidad: horasAyuno } });
+                    } else {
+                        await prisma.logConsumo.create({ data: { tipo: "AYUNO", descripcion: `Ayuno corto`, cantidad: horasAyuno } });
+                    }
+                    break;
                 case "estado":
                     if (evento.energia || evento.concentracion) {
                         await prisma.logEstado.create({ data: { energia: evento.energia, concentracion: evento.concentracion, inputUsuario: text, notasIA: evento.resumen } });
@@ -143,26 +188,18 @@ const handleMessage = async (ctx: any) => {
                     await prisma.logCiclo.create({ data: { tarea: evento.tarea, pilar: evento.pilar, estado: "EN_PROGRESO" } });
                     xpGanada = 15;
                     break;
-                case "ciclo_fin":
-                    const ultimo = await prisma.logCiclo.findFirst({ where: { fin: null }, orderBy: { inicio: 'desc' } });
-                    if (ultimo) {
-                        await prisma.logCiclo.update({ where: { id: ultimo.id }, data: { fin: new Date(), estado: "COMPLETADO", resultado: evento.resultado } });
-                        xpGanada = 50; // ¡Premio mayor!
-                    }
-                    break;
                 case "idea":
                     await prisma.logIdea.create({ data: { idea: evento.texto || evento.descripcion || text, tags: evento.tags_idea } });
                     xpGanada = 20;
                     break;
                 default:
-                    xpGanada = 5; // Nota simple
+                    xpGanada = 5;
             }
 
-            // Sumar XP y obtener mensaje
             let suffixXP = "";
             if (xpGanada > 0) {
                 const resultadoXP = await sumarXP(xpGanada);
-                suffixXP = ` _${resultadoXP.msg}_`;
+                suffixXP = ` _${resultadoXP.msg}${notaExtra}_`;
             }
 
             if (evento.reply) {
