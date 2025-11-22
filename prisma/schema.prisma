@@ -7,104 +7,147 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// --- ESTADÍSTICAS Y RACHAS (Hardcore Mode) ---
+// 👤 USUARIO (El centro de todo)
+model User {
+  id         String   @id @default(cuid())
+  telegramId String   @unique
+  createdAt  DateTime @default(now())
+
+  // Relación 1 a 1: Estadísticas del personaje
+  stats      UserStats? 
+
+  // Relación 1 a N: Tus datos
+  addictions Addiction[]
+  logsCiclo  LogCiclo[]
+  logsEstado LogEstado[]
+  logsHabito LogHabito[]
+  logsConsumo LogConsumo[]
+  logsSocial LogSocial[]
+  logsIdea   LogIdea[]
+}
+
+// 📊 ESTADÍSTICAS Y RACHAS (Hardcore Mode)
 model UserStats {
-  id        Int @id @default(autoincrement())
+  id         String   @id @default(cuid())
   
   // XP y Nivel por Pilar
-  xpPlata    Int @default(0)
-  lvlPlata   Int @default(1)
+  xpPlata    Int      @default(0)
+  lvlPlata   Int      @default(1)
   
-  xpPensar   Int @default(0)
-  lvlPensar  Int @default(1)
+  xpPensar   Int      @default(0)
+  lvlPensar  Int      @default(1)
   
-  xpFisico   Int @default(0)
-  lvlFisico  Int @default(1)
+  xpFisico   Int      @default(0)
+  lvlFisico  Int      @default(1)
   
-  xpSocial   Int @default(0)
-  lvlSocial  Int @default(1)
+  xpSocial   Int      @default(0)
+  lvlSocial  Int      @default(1)
 
-  // RACHAS (Nuevo) - Guardamos fecha de última acción para calcular castigos
-  rachaPlata      Int      @default(0)
-  lastPlata       DateTime @default(now())
+  // RACHAS
+  rachaPlata  Int      @default(0)
+  lastPlata   DateTime @default(now())
   
-  rachaPensar     Int      @default(0)
-  lastPensar      DateTime @default(now())
+  rachaPensar Int      @default(0)
+  lastPensar  DateTime @default(now())
   
-  rachaFisico     Int      @default(0)
-  lastFisico      DateTime @default(now())
+  rachaFisico Int      @default(0)
+  lastFisico  DateTime @default(now())
   
-  rachaSocial     Int      @default(0)
-  lastSocial      DateTime @default(now())
+  rachaSocial Int      @default(0)
+  lastSocial  DateTime @default(now())
+
+  // Conexión con Usuario
+  userId     String   @unique
+  user       User     @relation(fields: [userId], references: [id])
 }
 
-// --- MODULO ANTI-ADICCIONES (Nuevo) ---
+// 🚫 MODULO ANTI-ADICCIONES
 model Addiction {
-  id          Int      @id @default(autoincrement())
-  nombre      String   // Ej: "Porno", "Azúcar", "Cigarrillo"
-  inicio      DateTime @default(now()) // Cuándo empezaste a dejarlo
-  ultimoRelapso DateTime @default(now()) // Última vez que caíste
-  recordHoras Float    @default(0) // Tu mejor racha histórica en horas
-  recaidas    Int      @default(0)
+  id            String   @id @default(cuid())
+  nombre        String   // Ej: "Porno", "Azúcar"
+  inicio        DateTime @default(now()) 
+  ultimoRelapso DateTime @default(now()) 
+  recordHoras   Float    @default(0) 
+  recaidas      Int      @default(0)
+  
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
 }
 
-// --- LOGS (Con soporte para "Drill Down") ---
+// 🔄 LOGS (Drill Down + XP)
 model LogCiclo {
-  id          Int       @id @default(autoincrement())
-  tarea       String    // Ej: "Entrenamiento de Boxing"
+  id          String   @id @default(cuid())
+  tarea       String   
   pilar       Pilar
-  inicio      DateTime  @default(now())
+  inicio      DateTime @default(now())
   fin         DateTime?
   estado      EstadoCiclo @default(EN_PROGRESO)
   resultado   String?
-  xpGanada    Int       @default(0)
-  actividad   String?   // Nuevo: Para agrupar (Ej: "BOXING", "CODING")
+  xpGanada    Int      @default(0)
+  actividad   String?  // "BOXING", "CODING"
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
 }
 
-// ... (El resto de tablas LogEstado, LogConsumo, etc. quedan igual, no hace falta tocarlas)
 model LogEstado {
-  id            Int      @id @default(autoincrement())
+  id            String   @id @default(cuid())
   timestamp     DateTime @default(now())
   energia       Int?     
   concentracion Int?     
   inputUsuario  String?  
   notasIA       String?  
-  xpGanada      Int      @default(0) 
+  xpGanada      Int      @default(0)
+  
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
 }
 
 model LogHabito {
-  id          Int      @id @default(autoincrement())
+  id          String   @id @default(cuid())
   nombre      String
   timestamp   DateTime @default(now())
   estado      EstadoHabito
   snoozeCount Int      @default(0)
-  xpGanada    Int      @default(0) 
+  xpGanada    Int      @default(0)
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
 }
 
 model LogConsumo {
-  id          Int      @id @default(autoincrement())
+  id          String   @id @default(cuid())
   timestamp   DateTime @default(now())
   tipo        TipoConsumo
   descripcion String
   cantidad    Float?   
   xpGanada    Int      @default(0)
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
 }
 
 model LogIdea {
-  id        Int      @id @default(autoincrement())
+  id        String   @id @default(cuid())
   timestamp DateTime @default(now())
   idea      String
   tags      String?
   xpGanada  Int      @default(0)
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
 }
 
 model LogSocial {
-  id          Int      @id @default(autoincrement())
-  timestamp   DateTime @default(now())
-  tipo        String
-  duracion    Int?
-  valoracion  Int?
-  xpGanada    Int      @default(0) 
+  id         String   @id @default(cuid())
+  timestamp  DateTime @default(now())
+  tipo       String
+  duracion   Int?
+  valoracion Int?
+  xpGanada   Int      @default(0)
+
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
 }
 
 // ENUMS
