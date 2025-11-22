@@ -67,13 +67,13 @@ export default async function Home() {
             <div className="flex justify-between items-center mb-3 relative z-10">
               {/* Izquierda: Nombre limpio */}
               <div className="text-left">
-                <p className="text-2xl font-black text-white tracking-wider">FRANCO</p>
+                <p className="text-lg font-bold text-white">FRANCO</p>
               </div>
               
               {/* Derecha: LVL + Número dorado */}
               <div className="text-right flex items-baseline gap-1.5">
                 <span className="text-xs font-bold text-neutral-600 tracking-widest">LVL</span>
-                <p className="text-3xl font-black text-yellow-400 leading-none">{global.nivel}</p>
+                <p className="text-2xl font-black text-yellow-400 leading-none">{global.nivel}</p>
               </div>
             </div>
             
