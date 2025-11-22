@@ -10,7 +10,6 @@ async function getData() {
     xpFisico: 0, lvlFisico: 1, xpSocial: 0, lvlSocial: 1 
   };
 
-  // Traemos los últimos 15 para que haya bastante para scrollear
   const logros = await prisma.logCiclo.findMany({
     where: { estado: 'COMPLETADO' },
     take: 15,
@@ -20,6 +19,7 @@ async function getData() {
   return { stats, logros };
 }
 
+// Algoritmo Gamer Global
 function calcularNivelGlobal(totalXP: number) {
   let nivel = 1;
   let costo = 100;
@@ -38,16 +38,32 @@ export default async function Home() {
   const totalXP = stats.xpPlata + stats.xpPensar + stats.xpFisico + stats.xpSocial;
   const global = calcularNivelGlobal(totalXP);
 
-  const getProgress = (xp: number, lvl: number) => {
-    const meta = lvl * 100;
-    const porcentaje = Math.min(100, Math.round((xp / meta) * 100));
-    return { porcentaje, meta };
+  // Helper para calcular porcentaje
+  const calcPorcentaje = (actual: number, total: number) => {
+    if (total === 0) return 0;
+    return Math.min(100, Math.round((actual / total) * 100));
   };
 
-  const plata = getProgress(stats.xpPlata, stats.lvlPlata);
-  const pensar = getProgress(stats.xpPensar, stats.lvlPensar);
-  const fisico = getProgress(stats.xpFisico, stats.lvlFisico);
-  const social = getProgress(stats.xpSocial, stats.lvlSocial);
+  // Barras Individuales
+  const plata = { 
+    meta: stats.lvlPlata * 100, 
+    porcentaje: calcPorcentaje(stats.xpPlata, stats.lvlPlata * 100) 
+  };
+  const pensar = { 
+    meta: stats.lvlPensar * 100, 
+    porcentaje: calcPorcentaje(stats.xpPensar, stats.lvlPensar * 100) 
+  };
+  const fisico = { 
+    meta: stats.lvlFisico * 100, 
+    porcentaje: calcPorcentaje(stats.xpFisico, stats.lvlFisico * 100) 
+  };
+  const social = { 
+    meta: stats.lvlSocial * 100, 
+    porcentaje: calcPorcentaje(stats.xpSocial, stats.lvlSocial * 100) 
+  };
+
+  // Barra Global (Corrección aquí)
+  const porcentajeGlobal = calcPorcentaje(global.xpRestante, global.proximoNivel);
 
   return (
     <main className="min-h-screen bg-[#050505] text-white font-sans selection:bg-purple-500/30 pb-20">
@@ -65,19 +81,16 @@ export default async function Home() {
           {/* TARJETA DE NIVEL GLOBAL */}
           <div className="bg-[#111] border border-[#222] p-5 rounded-2xl shadow-2xl relative overflow-hidden group">
             <div className="flex justify-between items-center mb-3 relative z-10">
-              {/* Izquierda: Nombre limpio */}
               <div className="text-left">
                 <p className="text-lg font-bold text-white">FRANCO</p>
               </div>
-              
-              {/* Derecha: LVL + Número dorado */}
               <div className="text-right flex items-baseline gap-1.5">
                 <span className="text-xs font-bold text-neutral-600 tracking-widest">LVL</span>
                 <p className="text-2xl font-black text-yellow-400 leading-none">{global.nivel}</p>
               </div>
             </div>
             
-            {/* Barra de XP */}
+            {/* Barra de XP Global */}
             <div className="relative z-10">
                 <div className="flex justify-between text-[10px] text-neutral-600 font-mono mb-1.5">
                     <span>XP TOTAL: {totalXP}</span>
@@ -86,14 +99,14 @@ export default async function Home() {
                 <div className="h-2 w-full bg-[#000] rounded-full overflow-hidden border border-[#222]">
                     <div 
                         className="h-full bg-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.4)] transition-all duration-1000"
-                        style={{ width: `${(global.xpRestante / global.proximoNivel) * 100}%` }} 
+                        style={{ width: `${porcentajeGlobal}%` }} 
                     />
                 </div>
             </div>
           </div>
         </header>
 
-        {/* STATS GRID (ESTILO COMPACTO) */}
+        {/* STATS GRID */}
         <div className="space-y-3 mb-12">
           <StatCard emoji="💰" title="PLATA" lvl={stats.lvlPlata} xp={stats.xpPlata} meta={plata.meta} progress={plata.porcentaje} color="bg-emerald-500" />
           <StatCard emoji="🧠" title="PENSAR" lvl={stats.lvlPensar} xp={stats.xpPensar} meta={pensar.meta} progress={pensar.porcentaje} color="bg-blue-500" />
@@ -101,7 +114,7 @@ export default async function Home() {
           <StatCard emoji="❤️" title="SOCIAL" lvl={stats.lvlSocial} xp={stats.xpSocial} meta={social.meta} progress={social.porcentaje} color="bg-pink-500" />
         </div>
 
-        {/* BITÁCORA - Separada con margen para scrollear */}
+        {/* BITÁCORA SCROLLEABLE */}
         <section className="border-t border-[#222] pt-8">
           <div className="flex items-center justify-center mb-6 opacity-50">
             <span className="text-[10px] uppercase tracking-widest text-neutral-500">▼ Scroll para historial ▼</span>
