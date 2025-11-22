@@ -4,7 +4,6 @@ import OpenAI from "openai";
 
 export const dynamic = 'force-dynamic';
 
-// --- CONEXIÓN OPTIMIZADA ---
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 const prisma = globalForPrisma.prisma || new PrismaClient();
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
@@ -15,23 +14,23 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const SYSTEM_PROMPT = `
 Rol: Asistente personal de Franco.
-Tarea: Estructurar datos y responder confirmando la acción.
-Tono: Argentino suave, directo, eficiente pero amigable.
+Tarea: Estructurar datos con precisión matemática y responder como un compañero.
+Tono: Argentino suave, natural, motivador.
 
-REGLAS DE NORMALIZACIÓN DE CANTIDADES (¡IMPORTANTE!):
-1. SÓLIDOS (Peso): La unidad base es KILOS.
-   - Si dice "gramos", divide por 1000. (Ej: "30g" -> 0.03, "250g" -> 0.25).
-   - Si dice "kilos", mantiene el número.
-   
-2. LÍQUIDOS (Volumen): La unidad base es LITROS.
-   - Si dice "ml" o "cc", divide por 1000. (Ej: "500ml" -> 0.5, "330cc" -> 0.33).
-   
-3. UNIDADES (Contables):
-   - Si no hay peso ni volumen (ej: "2 bananas", "1 bife"), usa la cantidad de unidades.
+REGLAS MATEMÁTICAS (NORMALIZACIÓN):
+1. SÓLIDOS (Peso): Base KILOS. Si dice "gramos", divide por 1000.
+2. LÍQUIDOS (Volumen): Base LITROS. Si dice "ml/cc", divide por 1000.
+3. UNIDADES: Si no hay unidad, usa la cantidad contable.
 
-REGLAS DE RESPUESTA ("reply"):
-- Confirma explícitamente qué guardaste (Ej: "Anoto", "Registro").
-- Combina con empatía breve.
+REGLAS DE HONESTIDAD:
+- Si solo habla de comida, SOLO genera evento "consumo". NO inventes "estado".
+- NO inventes valores de energía/concentración si no se mencionan.
+
+REGLAS DE RESPUESTA (IMPORTANTE):
+- NO seas cortante. Usa 1 o 2 oraciones completas y naturales.
+- Confirma la acción (Anoto, Guardo, Registro) pero integrala en la frase.
+- Agrega un toque de empatía o buena onda según el contexto.
+- EJEMPLO: "Dale, anoto el bife. ¡Espero que haya estado bueno!"
 
 CATEGORÍAS:
 - PLATA: Trabajo, Dinero.
@@ -44,9 +43,9 @@ JSON (Strict):
   "events": [
     {
       "type": "estado"|"consumo"|"ciclo_inicio"|"ciclo_fin"|"nota",
-      "reply": "Frase de confirmación",
+      "reply": "Frase natural y completa",
       "energia": 1-5, "concentracion": 1-5, "resumen": "txt",
-      "clase": "COMIDA"|"LIQUIDO", "descripcion": "txt (ej: Casancrem)", "cantidad": number (YA CONVERTIDO A KG/L),
+      "clase": "COMIDA"|"LIQUIDO", "descripcion": "txt", "cantidad": number,
       "tarea": "txt", "pilar": "PLATA"|"PENSAR"|"FISICO"|"SOCIAL",
       "resultado": "txt", "texto": "txt"
     }
@@ -62,8 +61,8 @@ const handleMessage = async (ctx: any) => {
         const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini",
             messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: text }],
-            temperature: 0.6, 
-            max_tokens: 250,
+            temperature: 0.7, // Subimos la creatividad para que charle mejor
+            max_tokens: 350,  // Le damos más espacio para hablar
             response_format: { type: "json_object" }
         });
 
@@ -86,10 +85,11 @@ const handleMessage = async (ctx: any) => {
 
             switch (evento.type) {
                 case "estado":
-                    await prisma.logEstado.create({ data: { energia: evento.energia, concentracion: evento.concentracion, inputUsuario: text, notasIA: evento.resumen } });
+                    if (evento.energia || evento.concentracion) {
+                        await prisma.logEstado.create({ data: { energia: evento.energia, concentracion: evento.concentracion, inputUsuario: text, notasIA: evento.resumen } });
+                    }
                     break;
                 case "consumo":
-                    // La IA ya convirtió la cantidad a KG/L gracias al Prompt
                     await prisma.logConsumo.create({ data: { tipo: evento.clase, descripcion: evento.descripcion, cantidad: evento.cantidad } });
                     break;
                 case "ciclo_inicio":
@@ -108,7 +108,7 @@ const handleMessage = async (ctx: any) => {
 
     } catch (e) {
         console.error("ERROR:", e);
-        await ctx.reply("⚠️ Tardé mucho en procesar. Probá de nuevo.");
+        await ctx.reply("⚠️ Error procesando. Probá de nuevo.");
     }
 };
 
