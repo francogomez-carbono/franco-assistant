@@ -28,14 +28,6 @@ model UserStats {
   lvlSocial  Int @default(1)
 }
 
-// --- SEGUNDO CEREBRO (NUEVO) ---
-model LogIdea {
-  id        Int      @id @default(autoincrement())
-  timestamp DateTime @default(now())
-  idea      String
-  tags      String?  // Ej: "Negocio, App, Viaje"
-}
-
 // --- LOS DE SIEMPRE ---
 model Rutina {
   id          Int      @id @default(autoincrement())
@@ -53,6 +45,7 @@ model LogEstado {
   concentracion Int?     
   inputUsuario  String?  
   notasIA       String?  
+  xpGanada      Int      @default(0) // <--- NUEVO
 }
 
 model LogCiclo {
@@ -63,6 +56,7 @@ model LogCiclo {
   fin         DateTime?
   estado      EstadoCiclo @default(EN_PROGRESO)
   resultado   String?
+  xpGanada    Int       @default(0) // <--- NUEVO
 }
 
 model LogHabito {
@@ -71,6 +65,7 @@ model LogHabito {
   timestamp   DateTime @default(now())
   estado      EstadoHabito
   snoozeCount Int      @default(0)
+  xpGanada    Int      @default(0) // <--- NUEVO
 }
 
 model LogConsumo {
@@ -79,6 +74,15 @@ model LogConsumo {
   tipo        TipoConsumo
   descripcion String
   cantidad    Float?   
+  xpGanada    Int      @default(0) // <--- NUEVO
+}
+
+model LogIdea {
+  id        Int      @id @default(autoincrement())
+  timestamp DateTime @default(now())
+  idea      String
+  tags      String?
+  xpGanada  Int      @default(0) // <--- NUEVO
 }
 
 model LogSocial {
@@ -87,6 +91,7 @@ model LogSocial {
   tipo        String
   duracion    Int?
   valoracion  Int?
+  xpGanada    Int      @default(0) // <--- NUEVO
 }
 
 // --- ENUMS ---
