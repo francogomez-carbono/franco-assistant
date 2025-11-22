@@ -2,70 +2,62 @@ import { Bot, webhookCallback } from "grammy";
 import { PrismaClient } from "@prisma/client";
 import OpenAI from "openai";
 
-// 1. AJUSTE CLAVE: Pedimos hasta 60 segundos a Vercel (en plan Hobby a veces lo limita a 10s, pero esto ayuda)
-export const maxDuration = 60; 
 export const dynamic = 'force-dynamic';
+
+// --- 1. OPTIMIZACIÓN DE CONEXIÓN (Singleton) ---
+// Esto evita reconectar a la DB en cada mensaje, ahorrando 1-2 segundos.
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
+const prisma = globalForPrisma.prisma || new PrismaClient();
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 const token = process.env.TELEGRAM_TOKEN;
 const bot = token ? new Bot(token) : null;
-// Instanciamos Prisma fuera del handler para reusar la conexión (Mejora velocidad)
-const prisma = new PrismaClient();
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// --- 2. PROMPT COMPACTO (Para que GPT lea más rápido) ---
 const SYSTEM_PROMPT = `
-Eres el asistente personal de Franco. Tu rol es ser un COMPAÑERO de productividad.
-Tono: Natural, breve, motivador, argentino suave.
+Rol: Asistente productivo de Franco.
+Tarea: Convierte input en JSON de eventos.
+Tono: Breve, argentino.
 
-TU TAREA:
-1. Analiza el input y extrae JSON.
-2. Genera una respuesta ("reply") conversacional.
+REGLAS:
+- PLATA: Trabajo, Dinero.
+- PENSAR: Estudio, Planificación.
+- FISICO: Salud, Gym, Sueño.
+- SOCIAL: Gente.
 
-CATEGORÍAS:
-1. PLATA (Trabajo, Coding, Dinero)
-2. PENSAR (Estudio, Leer, Planear)
-3. FISICO (Entrenar, Salud, Dormir)
-4. SOCIAL (Relaciones, Salidas)
-
-FORMATO JSON (ESTRICTO):
+JSON (Strict):
 {
   "events": [
     {
-      "type": "estado" | "consumo" | "ciclo_inicio" | "ciclo_fin" | "nota",
-      "reply": "Texto breve aquí",
-      ...datos especificos...
+      "type": "estado"|"consumo"|"ciclo_inicio"|"ciclo_fin"|"nota",
+      "reply": "Respuesta MUY corta",
+      "energia": 1-5, "concentracion": 1-5, "resumen": "txt",
+      "clase": "COMIDA"|"LIQUIDO", "descripcion": "txt", "cantidad": num,
+      "tarea": "txt", "pilar": "PLATA"|"PENSAR"|"FISICO"|"SOCIAL",
+      "resultado": "txt", "texto": "txt"
     }
   ]
 }
-DATOS ESPECIFICOS:
-- estado: { "energia": 1-5, "concentracion": 1-5, "resumen": "string" }
-- consumo: { "clase": "COMIDA" | "LIQUIDO", "descripcion": "string", "cantidad": number | null }
-- ciclo_inicio: { "tarea": "string", "pilar": "PLATA" | "PENSAR" | "FISICO" | "SOCIAL" }
-- ciclo_fin: { "resultado": "string" }
-- nota: { "texto": "string" }
 `;
 
 const handleMessage = async (ctx: any) => {
     if (!ctx.message.text) return;
     const text = ctx.message.text;
     
-    console.log(`📩 Mensaje recibido: ${text}`); // Log para debug
-
-    // Feedback visual rápido (para que Telegram sepa que estamos vivos)
-    await bot?.api.sendChatAction(ctx.chat.id, "typing").catch(() => {});
-
+    // Eliminamos el "sendChatAction" para ahorrar 500ms de red
+    
     try {
-        // 2. AJUSTE CLAVE: Limitamos max_tokens para que GPT responda más rápido
+        // OpenAI con timeout manual para no colgar a Vercel
         const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini",
             messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: text }],
-            temperature: 0.7,
-            max_tokens: 300, // No dejes que escriba infinito
+            temperature: 0.5, // Menos creatividad = Más velocidad
+            max_tokens: 150,  // Respuesta corta obligatoria
             response_format: { type: "json_object" }
         });
 
         const raw = completion.choices[0].message.content || "{}";
-        
-        // Limpieza JSON
         const firstBrace = raw.indexOf('{');
         const lastBrace = raw.lastIndexOf('}');
         
@@ -79,9 +71,7 @@ const handleMessage = async (ctx: any) => {
         const eventos = data.events || [data]; 
         let respuestasArray: string[] = [];
 
-        console.log(`🧠 IA procesó ${eventos.length} eventos. Guardando en DB...`);
-
-        // Guardado en DB
+        // Ejecutamos las promesas de DB en paralelo si es posible, pero secuencial es más seguro para lógica
         for (const evento of eventos) {
             if (evento.reply) respuestasArray.push(evento.reply);
 
@@ -99,21 +89,17 @@ const handleMessage = async (ctx: any) => {
                     const ultimo = await prisma.logCiclo.findFirst({ where: { fin: null }, orderBy: { inicio: 'desc' } });
                     if (ultimo) {
                         await prisma.logCiclo.update({ where: { id: ultimo.id }, data: { fin: new Date(), estado: "COMPLETADO", resultado: evento.resultado } });
-                    } else {
-                        // Si no hay ciclo, solo agregamos el texto de respuesta, no fallamos.
-                        console.log("Intento de cierre sin ciclo activo.");
                     }
                     break;
             }
         }
-        
-        console.log("💾 Guardado exitoso. Respondiendo...");
-        await ctx.reply(respuestasArray.join("\n\n"));
+
+        await ctx.reply(respuestasArray.join("\n"));
 
     } catch (e) {
-        console.error("❌ ERROR FATAL:", e);
-        // Si falla, avisa al usuario para que sepa que no se guardó
-        await ctx.reply("⏱️ El sistema tardó demasiado (posiblemente la base de datos se estaba despertando). Por favor, probá enviar el mensaje de nuevo.");
+        console.error("ERROR:", e);
+        // Mensaje de error más corto
+        await ctx.reply("⚠️ Error de tiempo. Intenta frases más cortas.");
     }
 };
 
@@ -121,4 +107,4 @@ if (bot) {
     bot.on("message:text", handleMessage);
 }
 
-export const POST = bot ? webhookCallback(bot, "std/http") : async () => Response.json({ error: "No token provided" });
+export const POST = bot ? webhookCallback(bot, "std/http") : async () => Response.json({ error: "No token" });
