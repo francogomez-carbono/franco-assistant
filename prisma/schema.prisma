@@ -7,12 +7,25 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// --- JUEGO Y ESTADÍSTICAS (NUEVO) ---
+// --- JUEGO Y ESTADÍSTICAS (POR PILAR) ---
 model UserStats {
   id        Int @id @default(autoincrement())
-  xp        Int @default(0)
-  level     Int @default(1)
-  racha     Int @default(0) // Días seguidos (para futuro)
+  
+  // PLATA
+  xpPlata    Int @default(0)
+  lvlPlata   Int @default(1)
+  
+  // PENSAR
+  xpPensar   Int @default(0)
+  lvlPensar  Int @default(1)
+  
+  // FISICO
+  xpFisico   Int @default(0)
+  lvlFisico  Int @default(1)
+  
+  // SOCIAL
+  xpSocial   Int @default(0)
+  lvlSocial  Int @default(1)
 }
 
 // --- SEGUNDO CEREBRO (NUEVO) ---
