@@ -4,8 +4,7 @@ import OpenAI from "openai";
 
 export const dynamic = 'force-dynamic';
 
-// --- 1. OPTIMIZACIÓN DE CONEXIÓN (Singleton) ---
-// Esto evita reconectar a la DB en cada mensaje, ahorrando 1-2 segundos.
+// --- CONEXIÓN OPTIMIZADA ---
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 const prisma = globalForPrisma.prisma || new PrismaClient();
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
@@ -14,13 +13,19 @@ const token = process.env.TELEGRAM_TOKEN;
 const bot = token ? new Bot(token) : null;
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// --- 2. PROMPT COMPACTO (Para que GPT lea más rápido) ---
+// --- PROMPT BALANCEADO ---
 const SYSTEM_PROMPT = `
-Rol: Asistente productivo de Franco.
-Tarea: Convierte input en JSON de eventos.
-Tono: Breve, argentino.
+Rol: Asistente y compañero de Franco.
+Tarea: Estructurar datos y responder con empatía.
+Tono: Argentino suave, motivador, casual.
 
-REGLAS:
+REGLAS DE RESPUESTA ("reply"):
+- NO seas robótico. Usa 1 o 2 frases naturales.
+- Si es trabajo (PLATA): Deséale foco o felicítalo.
+- Si es consumo: Confirma con buena onda.
+- Si es estado: Muestra empatía real.
+
+CATEGORÍAS:
 - PLATA: Trabajo, Dinero.
 - PENSAR: Estudio, Planificación.
 - FISICO: Salud, Gym, Sueño.
@@ -31,7 +36,7 @@ JSON (Strict):
   "events": [
     {
       "type": "estado"|"consumo"|"ciclo_inicio"|"ciclo_fin"|"nota",
-      "reply": "Respuesta MUY corta",
+      "reply": "Frase natural y empática aquí",
       "energia": 1-5, "concentracion": 1-5, "resumen": "txt",
       "clase": "COMIDA"|"LIQUIDO", "descripcion": "txt", "cantidad": num,
       "tarea": "txt", "pilar": "PLATA"|"PENSAR"|"FISICO"|"SOCIAL",
@@ -45,15 +50,12 @@ const handleMessage = async (ctx: any) => {
     if (!ctx.message.text) return;
     const text = ctx.message.text;
     
-    // Eliminamos el "sendChatAction" para ahorrar 500ms de red
-    
     try {
-        // OpenAI con timeout manual para no colgar a Vercel
         const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini",
             messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: text }],
-            temperature: 0.5, // Menos creatividad = Más velocidad
-            max_tokens: 150,  // Respuesta corta obligatoria
+            temperature: 0.7, // Subimos un poco para que tenga "chispa"
+            max_tokens: 250,  // Damos espacio para una frase completa
             response_format: { type: "json_object" }
         });
 
@@ -71,7 +73,6 @@ const handleMessage = async (ctx: any) => {
         const eventos = data.events || [data]; 
         let respuestasArray: string[] = [];
 
-        // Ejecutamos las promesas de DB en paralelo si es posible, pero secuencial es más seguro para lógica
         for (const evento of eventos) {
             if (evento.reply) respuestasArray.push(evento.reply);
 
@@ -94,12 +95,11 @@ const handleMessage = async (ctx: any) => {
             }
         }
 
-        await ctx.reply(respuestasArray.join("\n"));
+        await ctx.reply(respuestasArray.join("\n\n"));
 
     } catch (e) {
         console.error("ERROR:", e);
-        // Mensaje de error más corto
-        await ctx.reply("⚠️ Error de tiempo. Intenta frases más cortas.");
+        await ctx.reply("⚠️ El sistema tardó en responder. Probá de nuevo.");
     }
 };
 
