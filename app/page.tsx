@@ -1,9 +1,11 @@
 import { PrismaClient } from "@prisma/client";
-import { StatCard } from "@/components/StatCard"; // <--- AQUÍ ESTÁ LA MAGIA
+import Link from "next/link";
 
 export const dynamic = 'force-dynamic';
 
 const prisma = new PrismaClient();
+
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 async function getData() {
   const stats = await prisma.userStats.findFirst() || { 
@@ -11,17 +13,40 @@ async function getData() {
     xpFisico: 0, lvlFisico: 1, xpSocial: 0, lvlSocial: 1 
   };
 
-  const logros = await prisma.logCiclo.findMany({
+  // 1. Logros (Ciclos Completados)
+  const ciclos = await prisma.logCiclo.findMany({
     where: { estado: 'COMPLETADO' },
     take: 15,
     orderBy: { fin: 'desc' }
   });
 
-  const adicciones = await prisma.addiction.findMany({
+  // 2. Inicios de Protocolo (Adicciones recientes) - CORRECCIÓN: Ahora los buscamos para la Home
+  const adiccionesRaw = await prisma.addiction.findMany({
+    take: 5,
+    orderBy: { inicio: 'desc' }
+  });
+
+  // Formateamos adicciones como si fueran logs para mezclarlos en la lista
+  const protocolos = adiccionesRaw.map(a => ({
+    id: `add-${a.id}`, // ID ficticio para key
+    tarea: `Protocolo: Dejar ${capitalize(a.nombre)}`,
+    xpGanada: 50, // Valor fijo de inicio
+    fecha: a.inicio,
+    esProtocolo: true // Flag para icono especial si quisieras
+  }));
+
+  // Unimos y ordenamos por fecha
+  const logrosUnificados = [
+    ...ciclos.map(c => ({ ...c, fecha: c.fin })),
+    ...protocolos
+  ].sort((a, b) => new Date(b.fecha!).getTime() - new Date(a.fecha!).getTime()).slice(0, 15);
+
+  // 3. Adicciones activas para el Tracker
+  const adiccionesActivas = await prisma.addiction.findMany({
     orderBy: { ultimoRelapso: 'asc' }
   });
 
-  return { stats, logros, adicciones };
+  return { stats, logros: logrosUnificados, adicciones: adiccionesActivas };
 }
 
 function calcularNivelGlobal(totalXP: number) {
@@ -40,6 +65,7 @@ function formatDuration(fecha: Date) {
   const ahora = new Date();
   const diffMs = ahora.getTime() - new Date(fecha).getTime();
   const horas = Math.floor(diffMs / (1000 * 60 * 60));
+  
   if (horas < 24) return `${horas}hs`;
   const dias = Math.floor(horas / 24);
   const horasRestantes = horas % 24;
@@ -71,10 +97,12 @@ export default async function Home() {
     <main className="min-h-screen bg-[#050505] text-white font-sans selection:bg-purple-500/30 pb-20">
       <div className="max-w-md mx-auto flex flex-col p-5">
         
+        {/* HEADER */}
         <header className="mb-6 pt-4 text-center">
           <div className="relative inline-block mb-4">
-            <h1 className="text-3xl font-black tracking-tighter bg-gradient-to-b from-white to-neutral-500 bg-clip-text text-transparent">
-              LIFE <span className="text-purple-500">OS</span>
+            {/* H1 Restaurado con Gradiente */}
+            <h1 className="text-4xl font-black tracking-tighter bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 bg-clip-text text-transparent">
+              LIFE OS
             </h1>
             <span className="absolute -top-1 -right-6 bg-[#111] text-[9px] px-1.5 py-0.5 rounded border border-[#333] text-neutral-400">BETA</span>
           </div>
@@ -89,18 +117,23 @@ export default async function Home() {
                 <p className="text-2xl font-black text-yellow-400 leading-none">{global.nivel}</p>
               </div>
             </div>
+            
             <div className="relative z-10">
                 <div className="flex justify-between text-[10px] text-neutral-600 font-mono mb-1.5">
                     <span>XP TOTAL: {totalXP}</span>
                     <span>{global.xpRestante} / {global.proximoNivel}</span>
                 </div>
                 <div className="h-2 w-full bg-[#000] rounded-full overflow-hidden border border-[#222]">
-                    <div className="h-full bg-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.4)] transition-all duration-1000" style={{ width: `${porcentajeGlobal}%` }} />
+                    <div 
+                        className="h-full bg-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.4)] transition-all duration-1000"
+                        style={{ width: `${porcentajeGlobal}%` }} 
+                    />
                 </div>
             </div>
           </div>
         </header>
 
+        {/* STATS GRID */}
         <div className="space-y-3 mb-8">
           <StatCard emoji="💰" title="PLATA" lvl={stats.lvlPlata} xp={stats.xpPlata} meta={plata.meta} progress={plata.porcentaje} color="bg-emerald-500" />
           <StatCard emoji="🧠" title="PENSAR" lvl={stats.lvlPensar} xp={stats.xpPensar} meta={pensar.meta} progress={pensar.porcentaje} color="bg-blue-500" />
@@ -108,6 +141,7 @@ export default async function Home() {
           <StatCard emoji="❤️" title="SOCIAL" lvl={stats.lvlSocial} xp={stats.xpSocial} meta={social.meta} progress={social.porcentaje} color="bg-pink-500" />
         </div>
 
+        {/* DETOX TRACKER */}
         {adicciones.length > 0 && (
           <section className="mb-8">
             <h3 className="text-[#444] text-[10px] font-bold tracking-[0.2em] mb-4 uppercase text-left">Protocolos Activos 🛡️</h3>
@@ -141,10 +175,12 @@ export default async function Home() {
           </section>
         )}
 
+        {/* BITÁCORA SCROLLEABLE */}
         <section className="border-t border-[#222] pt-8">
           <div className="flex items-center justify-center mb-6 opacity-50">
             <span className="text-[10px] uppercase tracking-widest text-neutral-500">▼ Historial ▼</span>
           </div>
+
           <div className="space-y-2">
             {logros.length === 0 ? (
               <div className="text-neutral-800 text-xs text-center py-8 border border-dashed border-[#222] rounded-lg">
@@ -152,18 +188,52 @@ export default async function Home() {
               </div>
             ) : (
               logros.map((log) => (
-                <div key={log.id} className="bg-[#0a0a0a] border border-[#222] p-3 rounded-lg flex items-center justify-between transition-colors hover:border-[#333]">
+                <div key={log.id} className="bg-[#050505] border border-[#222] p-3 rounded-lg flex items-center justify-between">
                   <div className="flex items-center gap-3 overflow-hidden">
-                    <div className="w-6 h-6 min-w-[24px] rounded-full bg-[#111] border border-[#222] flex items-center justify-center text-[10px] text-green-500">✓</div>
-                    <span className="text-neutral-400 text-xs font-medium truncate">{log.tarea}</span>
+                    {/* Tick Verde Circular */}
+                    <div className="w-5 h-5 min-w-[20px] rounded-full border border-green-900/30 bg-green-900/10 flex items-center justify-center">
+                      <span className="text-[10px] text-green-500">✓</span>
+                    </div>
+                    {/* Texto Blanco y Truncado */}
+                    <span className="text-neutral-200 text-xs font-medium truncate max-w-[200px]">{log.tarea}</span>
                   </div>
-                  <span className="text-[10px] font-bold text-[#444] bg-[#111] px-2 py-1 rounded border border-[#222] min-w-[50px] text-center">+{log.xpGanada} XP</span>
+                  {/* Badge de XP Oscuro */}
+                  <div className="bg-[#111] border border-[#222] px-2 py-1 rounded">
+                    <span className="text-[10px] font-bold text-[#666]">+{log.xpGanada} XP</span>
+                  </div>
                 </div>
               ))
             )}
           </div>
         </section>
+
       </div>
     </main>
+  );
+}
+
+function StatCard({ emoji, title, lvl, xp, meta, progress, color }: any) {
+  const link = `/${title.toLowerCase()}`;
+  return (
+    <Link href={link} className="block">
+      <div className="bg-[#111] border border-[#222] p-4 rounded-xl shadow-sm hover:border-[#444] hover:bg-[#151515] transition-all cursor-pointer group">
+        <div className="flex justify-between items-center mb-3">
+          <div className="flex items-center gap-3">
+            <div className="text-xl bg-[#1a1a1a] w-10 h-10 flex items-center justify-center rounded-lg border border-[#2a2a2a] group-hover:scale-110 transition-transform">{emoji}</div>
+            <div>
+              <h2 className="font-bold text-sm text-neutral-200 tracking-wide group-hover:text-white transition-colors">{title}</h2>
+              <p className="text-[10px] text-neutral-500 font-bold">NIVEL <span className="text-white">{lvl}</span></p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] text-neutral-500 font-bold mb-0.5">XP</p>
+            <p className="text-xs font-mono text-neutral-400">{xp} <span className="text-[#333]">/ {meta}</span></p>
+          </div>
+        </div>
+        <div className="h-2 w-full bg-[#000] rounded-full overflow-hidden border border-[#222]">
+          <div className={`h-full ${color} transition-all duration-700 ease-out`} style={{ width: `${progress}%` }} />
+        </div>
+      </div>
+    </Link>
   );
 }

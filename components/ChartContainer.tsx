@@ -1,36 +1,61 @@
 "use client";
 
 import { useState } from "react";
-import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid } from 'recharts';
 
-export function ChartContainer({ logs, consumos, color }: any) {
+export function ChartContainer({ logs, color }: any) {
   const [view, setView] = useState<"SEMANA" | "MES">("SEMANA");
 
   const processData = () => {
-    const days = view === "SEMANA" ? 7 : 30;
     const data = [];
     const now = new Date();
+    const diasSemana = ["DOM", "LUN", "MAR", "MIE", "JUE", "VIE", "SAB"];
 
-    for (let i = days - 1; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(now.getDate() - i);
-      const label = view === "SEMANA" 
-        ? d.toLocaleDateString('es-AR', { weekday: 'short' }) 
-        : d.getDate().toString();
+    if (view === "SEMANA") {
+      // LÓGICA SEMANA (LUN-DOM)
+      const day = now.getDay(); 
+      const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+      const monday = new Date(now);
+      monday.setDate(diff);
+      monday.setHours(0, 0, 0, 0);
 
-      const start = new Date(d.setHours(0,0,0,0));
-      const end = new Date(d.setHours(23,59,59,999));
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
 
-      const xpLogs = logs
-        .filter((l: any) => new Date(l.fin) >= start && new Date(l.fin) <= end)
-        .reduce((sum: number, l: any) => sum + l.xpGanada, 0);
+        const label = diasSemana[d.getDay()];
+        const fullDate = d.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
+
+        const start = new Date(d.setHours(0, 0, 0, 0));
+        const end = new Date(d.setHours(23, 59, 59, 999));
+
+        const xpTotal = logs
+          .filter((l: any) => new Date(l.fecha) >= start && new Date(l.fecha) <= end)
+          .reduce((sum: number, l: any) => sum + l.xpGanada, 0);
+
+        data.push({ name: label, fullDate, xp: xpTotal });
+      }
+
+    } else {
+      // LÓGICA MES (Últimos 30)
+      for (let i = 29; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(now.getDate() - i);
         
-      const xpConsumos = consumos
-        .filter((c: any) => new Date(c.timestamp) >= start && new Date(c.timestamp) <= end)
-        .reduce((sum: number, c: any) => sum + c.xpGanada, 0);
+        const label = d.getDate().toString();
+        const fullDate = d.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
 
-      data.push({ name: label, xp: xpLogs + xpConsumos });
+        const start = new Date(d.setHours(0, 0, 0, 0));
+        const end = new Date(d.setHours(23, 59, 59, 999));
+
+        const xpTotal = logs
+          .filter((l: any) => new Date(l.fecha) >= start && new Date(l.fecha) <= end)
+          .reduce((sum: number, l: any) => sum + l.xpGanada, 0);
+
+        data.push({ name: label, fullDate, xp: xpTotal });
+      }
     }
+
     return data;
   };
 
@@ -46,13 +71,13 @@ export function ChartContainer({ logs, consumos, color }: any) {
         <div className="flex bg-[#050505] p-1 rounded-lg border border-[#222]">
           <button 
             onClick={() => setView("SEMANA")}
-            className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${view === "SEMANA" ? "bg-[#222] text-white border border-[#333]" : "text-neutral-600 hover:text-neutral-400"}`}
+            className={`px-3 py-1 text-[10px] font-bold rounded-md ${view === "SEMANA" ? "bg-[#222] text-white border border-[#333]" : "text-neutral-600 hover:text-neutral-400"}`}
           >
             7D
           </button>
           <button 
             onClick={() => setView("MES")}
-            className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${view === "MES" ? "bg-[#222] text-white border border-[#333]" : "text-neutral-600 hover:text-neutral-400"}`}
+            className={`px-3 py-1 text-[10px] font-bold rounded-md ${view === "MES" ? "bg-[#222] text-white border border-[#333]" : "text-neutral-600 hover:text-neutral-400"}`}
           >
             30D
           </button>
@@ -62,6 +87,7 @@ export function ChartContainer({ logs, consumos, color }: any) {
       <div className="h-48 w-full">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#222" vertical={false} />
             <XAxis 
               dataKey="name" 
               stroke="#444" 
@@ -69,13 +95,30 @@ export function ChartContainer({ logs, consumos, color }: any) {
               axisLine={false}
               tickLine={false}
               tickMargin={10}
+              // TRUCO: Si es semana, intervalo 0 (mostrar todos). Si es mes, auto (mostrar salteado).
+              interval={view === "SEMANA" ? 0 : 'preserveStartEnd'}
+              minTickGap={view === "SEMANA" ? 0 : 15}
             />
             <Tooltip 
-              contentStyle={{backgroundColor: '#000', border: '1px solid #333', borderRadius: '8px', fontSize: '12px', color: '#fff'}}
-              itemStyle={{color: '#fff'}}
+              content={({ active, payload }) => {
+                if (active && payload && payload.length) {
+                  return (
+                    <div className="bg-black border border-[#333] p-2 rounded-lg shadow-xl">
+                      <p className="text-xs text-neutral-400 mb-1">{payload[0].payload.fullDate}</p>
+                      <p className="text-sm font-bold text-white">+{payload[0].value} XP</p>
+                    </div>
+                  );
+                }
+                return null;
+              }}
               cursor={{fill: '#222', opacity: 0.4}}
             />
-            <Bar dataKey="xp" radius={[4, 4, 0, 0]}>
+            <Bar 
+                dataKey="xp" 
+                radius={[4, 4, 0, 0]} 
+                maxBarSize={40}
+                isAnimationActive={false} // Adiós animación de barras creciendo
+            >
               {data.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={barColor} fillOpacity={entry.xp > 0 ? 1 : 0.1} />
               ))}
