@@ -32,7 +32,7 @@ export async function GET() {
         // 3. Determinar si se activó cada pilar hoy (Booleanos)
         const activoFisico = 
             logsHoy.some(l => l.pilar === "FISICO") || 
-            consumosHoy.some(c => c.tipo === "AYUNO" || c.tipo === "SUENO" || (c.xpGanada > 0 && c.tipo !== "AYUNO")); // Si comiste algo que dio XP o entrenaste
+            consumosHoy.some(c => (c.tipo as string) === "AYUNO" || (c.tipo as string) === "SUENO" || (c.xpGanada > 0 && (c.tipo as string) !== "AYUNO"));
         
         const activoPlata = logsHoy.some(l => l.pilar === "PLATA");
         const activoPensar = logsHoy.some(l => l.pilar === "PENSAR") || logsHoy.some(l => l.pilar === "PLATA"); // A veces plata implica pensar
