@@ -7,10 +7,21 @@ export const dynamic = 'force-dynamic';
 const prisma = new PrismaClient();
 
 async function getData(pilar: string) {
-  if (!pilar) return null; // Protección
+  if (!pilar) return null;
 
-  const pilarUpper = pilar.toUpperCase() as "PLATA" | "PENSAR" | "FISICO" | "SOCIAL";
+  // 1. Decodificar URL (por si viene como F%C3%ADSICO)
+  const decoded = decodeURIComponent(pilar);
   
+  // 2. Quitar acentos y pasar a mayúsculas para matchear Prisma Enum (FÍSICO -> FISICO)
+  const pilarEnum = decoded
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase() as "PLATA" | "PENSAR" | "FISICO" | "SOCIAL";
+  
+  // Mapa de seguridad por si falla la limpieza
+  const validPilars = ["PLATA", "PENSAR", "FISICO", "SOCIAL"];
+  const finalPilar = validPilars.includes(pilarEnum) ? pilarEnum : "PLATA";
+
   const stats = await prisma.userStats.findFirst();
   const map = {
     "PLATA": { xp: stats?.xpPlata, lvl: stats?.lvlPlata },
@@ -19,43 +30,41 @@ async function getData(pilar: string) {
     "SOCIAL": { xp: stats?.xpSocial, lvl: stats?.lvlSocial }
   };
   
-  // Si el pilar no existe en el mapa, devolvemos PLATA por defecto para no romper
-  const currentStat = map[pilarUpper] || map["PLATA"];
+  const currentStat = map[finalPilar] || map["PLATA"];
 
   const hace30dias = new Date();
   hace30dias.setDate(hace30dias.getDate() - 30);
 
   const logs = await prisma.logCiclo.findMany({
-    where: { pilar: pilarUpper, fin: { gte: hace30dias }, estado: 'COMPLETADO' },
+    where: { pilar: finalPilar, fin: { gte: hace30dias }, estado: 'COMPLETADO' },
     orderBy: { fin: 'asc' }
   });
   
   let consumos: any[] = [];
-  if (pilarUpper === "FISICO") {
+  if (finalPilar === "FISICO") {
     consumos = await prisma.logConsumo.findMany({
       where: { timestamp: { gte: hace30dias }, xpGanada: { gt: 0 } },
       orderBy: { timestamp: 'asc' }
     });
   }
 
-  return { pilar: pilarUpper, currentStat, logs, consumos };
+  return { pilarTitle: decoded.toUpperCase(), pilarEnum: finalPilar, currentStat, logs, consumos };
 }
 
-// Tipo correcto para Next.js 15
 type Props = {
   params: Promise<{ pilar: string }>
 }
 
 export default async function PilarPage({ params }: Props) {
-  const resolvedParams = await params; // Await explícito
-  const pilarRaw = resolvedParams?.pilar; // Acceso seguro
+  const resolvedParams = await params;
+  const pilarRaw = resolvedParams?.pilar;
 
   if (!pilarRaw) return <div className="p-10 text-white">Cargando...</div>;
 
   const data = await getData(pilarRaw);
   if (!data) return <div className="p-10 text-white">Pilar no encontrado</div>;
 
-  const { pilar, currentStat, logs, consumos } = data;
+  const { pilarTitle, pilarEnum, currentStat, logs, consumos } = data;
   
   const colors: any = {
     "PLATA": "text-emerald-400 border-emerald-900/30 bg-emerald-950/10",
@@ -63,7 +72,7 @@ export default async function PilarPage({ params }: Props) {
     "FISICO": "text-red-400 border-red-900/30 bg-red-950/10",
     "SOCIAL": "text-pink-400 border-pink-900/30 bg-pink-950/10"
   };
-  const theme = colors[pilar] || colors["PLATA"];
+  const theme = colors[pilarEnum] || colors["PLATA"];
 
   return (
     <main className="min-h-screen bg-[#050505] text-white p-5 pb-20 font-sans">
@@ -73,7 +82,8 @@ export default async function PilarPage({ params }: Props) {
           <Link href="/" className="p-2.5 bg-[#111] rounded-full border border-[#222] hover:bg-[#222] hover:border-[#444] transition-all active:scale-95">
             <ArrowLeft size={18} className="text-neutral-400" />
           </Link>
-          <h1 className={`text-xl font-black tracking-wide ${theme.split(' ')[0]}`}>{pilar}</h1>
+          {/* Usamos pilarTitle para mostrar FÍSICO (con tilde) lindo en el título */}
+          <h1 className={`text-xl font-black tracking-wide ${theme.split(' ')[0]}`}>{pilarTitle}</h1>
         </div>
 
         <div className={`p-6 rounded-2xl border mb-8 ${theme}`}>
