@@ -114,19 +114,38 @@ export default async function Home() {
         {adicciones.length > 0 && (
           <section className="mb-8">
             <h3 className="text-[#444] text-[10px] font-bold tracking-[0.2em] mb-4 uppercase text-left">Detox Tracker 🛡️</h3>
-            <div className="grid grid-cols-2 gap-3">
-              {adicciones.map((adiccion) => (
-                <div key={adiccion.id} className="bg-[#0a0a0a] border border-[#222] p-3 rounded-xl flex flex-col justify-between h-24 hover:border-red-900/30 transition-colors">
-                  <div className="flex justify-between items-start">
-                    <span className="text-xs font-bold text-neutral-300 uppercase">{adiccion.nombre}</span>
-                    <span className="text-[10px] text-neutral-600 bg-[#111] px-1.5 py-0.5 rounded">Récord: {(adiccion.recordHoras / 24).toFixed(1)}d</span>
+            <div className="grid grid-cols-1 gap-3">
+              {adicciones.map((adiccion) => {
+                // Calculamos % del record actual (tope 100%)
+                const ahora = new Date();
+                const horasActuales = (ahora.getTime() - new Date(adiccion.ultimoRelapso).getTime()) / (1000 * 60 * 60);
+                const porcentaje = adiccion.recordHoras > 0 
+                  ? Math.min(100, (horasActuales / adiccion.recordHoras) * 100) 
+                  : 0;
+
+                return (
+                  <div key={adiccion.id} className="bg-gradient-to-b from-[#151515] to-[#0a0a0a] border border-[#222] p-4 rounded-xl">
+                    <div className="flex justify-between mb-2">
+                      <span className="text-xs font-bold text-neutral-300 uppercase">{adiccion.nombre}</span>
+                      <span className="text-[10px] font-bold text-neutral-500">RÉCORD: {(adiccion.recordHoras / 24).toFixed(1)}d</span>
+                    </div>
+                    
+                    <div className="flex items-baseline gap-1 mb-3">
+                      <span className="text-2xl font-black text-white">{formatDuration(adiccion.ultimoRelapso)}</span>
+                      <span className="text-xs text-neutral-600 font-medium">sin recaídas</span>
+                    </div>
+
+                    {/* Barra de progreso contra el récord */}
+                    <div className="relative h-1.5 w-full bg-[#1a1a1a] rounded-full overflow-hidden">
+                      <div 
+                        className="absolute top-0 left-0 h-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)] transition-all duration-1000" 
+                        style={{ width: `${porcentaje}%` }}
+                      />
+                    </div>
+                    <p className="text-[9px] text-right text-neutral-600 mt-1 font-mono">{porcentaje.toFixed(0)}% del récord</p>
                   </div>
-                  <div>
-                    <p className="text-[10px] text-neutral-500 font-mono uppercase mb-0.5">Tiempo Limpio</p>
-                    <p className="text-xl font-black text-white tracking-tight">{formatDuration(adiccion.ultimoRelapso)}</p>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
         )}
