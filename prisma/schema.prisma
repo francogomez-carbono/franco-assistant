@@ -7,37 +7,61 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// --- JUEGO Y ESTADÍSTICAS (POR PILAR) ---
+// --- ESTADÍSTICAS Y RACHAS (Hardcore Mode) ---
 model UserStats {
   id        Int @id @default(autoincrement())
   
-  // PLATA
+  // XP y Nivel por Pilar
   xpPlata    Int @default(0)
   lvlPlata   Int @default(1)
   
-  // PENSAR
   xpPensar   Int @default(0)
   lvlPensar  Int @default(1)
   
-  // FISICO
   xpFisico   Int @default(0)
   lvlFisico  Int @default(1)
   
-  // SOCIAL
   xpSocial   Int @default(0)
   lvlSocial  Int @default(1)
+
+  // RACHAS (Nuevo) - Guardamos fecha de última acción para calcular castigos
+  rachaPlata      Int      @default(0)
+  lastPlata       DateTime @default(now())
+  
+  rachaPensar     Int      @default(0)
+  lastPensar      DateTime @default(now())
+  
+  rachaFisico     Int      @default(0)
+  lastFisico      DateTime @default(now())
+  
+  rachaSocial     Int      @default(0)
+  lastSocial      DateTime @default(now())
 }
 
-// --- LOS DE SIEMPRE ---
-model Rutina {
+// --- MODULO ANTI-ADICCIONES (Nuevo) ---
+model Addiction {
   id          Int      @id @default(autoincrement())
-  bloque      String   
-  pilar       Pilar
-  horaInicio  String   
-  dias        Int[]    
-  activo      Boolean  @default(true)
+  nombre      String   // Ej: "Porno", "Azúcar", "Cigarrillo"
+  inicio      DateTime @default(now()) // Cuándo empezaste a dejarlo
+  ultimoRelapso DateTime @default(now()) // Última vez que caíste
+  recordHoras Float    @default(0) // Tu mejor racha histórica en horas
+  recaidas    Int      @default(0)
 }
 
+// --- LOGS (Con soporte para "Drill Down") ---
+model LogCiclo {
+  id          Int       @id @default(autoincrement())
+  tarea       String    // Ej: "Entrenamiento de Boxing"
+  pilar       Pilar
+  inicio      DateTime  @default(now())
+  fin         DateTime?
+  estado      EstadoCiclo @default(EN_PROGRESO)
+  resultado   String?
+  xpGanada    Int       @default(0)
+  actividad   String?   // Nuevo: Para agrupar (Ej: "BOXING", "CODING")
+}
+
+// ... (El resto de tablas LogEstado, LogConsumo, etc. quedan igual, no hace falta tocarlas)
 model LogEstado {
   id            Int      @id @default(autoincrement())
   timestamp     DateTime @default(now())
@@ -45,18 +69,7 @@ model LogEstado {
   concentracion Int?     
   inputUsuario  String?  
   notasIA       String?  
-  xpGanada      Int      @default(0) // <--- NUEVO
-}
-
-model LogCiclo {
-  id          Int       @id @default(autoincrement())
-  tarea       String
-  pilar       Pilar
-  inicio      DateTime  @default(now())
-  fin         DateTime?
-  estado      EstadoCiclo @default(EN_PROGRESO)
-  resultado   String?
-  xpGanada    Int       @default(0) // <--- NUEVO
+  xpGanada      Int      @default(0) 
 }
 
 model LogHabito {
@@ -65,7 +78,7 @@ model LogHabito {
   timestamp   DateTime @default(now())
   estado      EstadoHabito
   snoozeCount Int      @default(0)
-  xpGanada    Int      @default(0) // <--- NUEVO
+  xpGanada    Int      @default(0) 
 }
 
 model LogConsumo {
@@ -74,7 +87,7 @@ model LogConsumo {
   tipo        TipoConsumo
   descripcion String
   cantidad    Float?   
-  xpGanada    Int      @default(0) // <--- NUEVO
+  xpGanada    Int      @default(0)
 }
 
 model LogIdea {
@@ -82,7 +95,7 @@ model LogIdea {
   timestamp DateTime @default(now())
   idea      String
   tags      String?
-  xpGanada  Int      @default(0) // <--- NUEVO
+  xpGanada  Int      @default(0)
 }
 
 model LogSocial {
@@ -91,10 +104,10 @@ model LogSocial {
   tipo        String
   duracion    Int?
   valoracion  Int?
-  xpGanada    Int      @default(0) // <--- NUEVO
+  xpGanada    Int      @default(0) 
 }
 
-// --- ENUMS ---
+// ENUMS
 enum Pilar {
   PLATA
   PENSAR
