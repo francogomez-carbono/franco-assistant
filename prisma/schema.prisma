@@ -7,8 +7,23 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// --- TUS 4 PILARES ---
+// --- JUEGO Y ESTADÍSTICAS (NUEVO) ---
+model UserStats {
+  id        Int @id @default(autoincrement())
+  xp        Int @default(0)
+  level     Int @default(1)
+  racha     Int @default(0) // Días seguidos (para futuro)
+}
 
+// --- SEGUNDO CEREBRO (NUEVO) ---
+model LogIdea {
+  id        Int      @id @default(autoincrement())
+  timestamp DateTime @default(now())
+  idea      String
+  tags      String?  // Ej: "Negocio, App, Viaje"
+}
+
+// --- LOS DE SIEMPRE ---
 model Rutina {
   id          Int      @id @default(autoincrement())
   bloque      String   
@@ -62,7 +77,6 @@ model LogSocial {
 }
 
 // --- ENUMS ---
-
 enum Pilar {
   PLATA
   PENSAR
