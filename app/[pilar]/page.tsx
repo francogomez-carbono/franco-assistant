@@ -7,6 +7,8 @@ export const dynamic = 'force-dynamic';
 const prisma = new PrismaClient();
 
 async function getData(pilar: string) {
+  if (!pilar) return null; // Protección
+
   const pilarUpper = pilar.toUpperCase() as "PLATA" | "PENSAR" | "FISICO" | "SOCIAL";
   
   const stats = await prisma.userStats.findFirst();
@@ -16,7 +18,9 @@ async function getData(pilar: string) {
     "FISICO": { xp: stats?.xpFisico, lvl: stats?.lvlFisico },
     "SOCIAL": { xp: stats?.xpSocial, lvl: stats?.lvlSocial }
   };
-  const currentStat = map[pilarUpper];
+  
+  // Si el pilar no existe en el mapa, devolvemos PLATA por defecto para no romper
+  const currentStat = map[pilarUpper] || map["PLATA"];
 
   const hace30dias = new Date();
   hace30dias.setDate(hace30dias.getDate() - 30);
@@ -37,8 +41,21 @@ async function getData(pilar: string) {
   return { pilar: pilarUpper, currentStat, logs, consumos };
 }
 
-export default async function PilarPage({ params }: { params: { pilar: string } }) {
-  const { pilar, currentStat, logs, consumos } = await getData(params.pilar);
+// Tipo correcto para Next.js 15
+type Props = {
+  params: Promise<{ pilar: string }>
+}
+
+export default async function PilarPage({ params }: Props) {
+  const resolvedParams = await params; // Await explícito
+  const pilarRaw = resolvedParams?.pilar; // Acceso seguro
+
+  if (!pilarRaw) return <div className="p-10 text-white">Cargando...</div>;
+
+  const data = await getData(pilarRaw);
+  if (!data) return <div className="p-10 text-white">Pilar no encontrado</div>;
+
+  const { pilar, currentStat, logs, consumos } = data;
   
   const colors: any = {
     "PLATA": "text-emerald-400 border-emerald-900/30 bg-emerald-950/10",
@@ -52,7 +69,6 @@ export default async function PilarPage({ params }: { params: { pilar: string } 
     <main className="min-h-screen bg-[#050505] text-white p-5 pb-20 font-sans">
       <div className="max-w-md mx-auto">
         
-        {/* Header */}
         <div className="flex items-center gap-4 mb-8">
           <Link href="/" className="p-2.5 bg-[#111] rounded-full border border-[#222] hover:bg-[#222] hover:border-[#444] transition-all active:scale-95">
             <ArrowLeft size={18} className="text-neutral-400" />
@@ -60,7 +76,6 @@ export default async function PilarPage({ params }: { params: { pilar: string } 
           <h1 className={`text-xl font-black tracking-wide ${theme.split(' ')[0]}`}>{pilar}</h1>
         </div>
 
-        {/* Stats Card */}
         <div className={`p-6 rounded-2xl border mb-8 ${theme}`}>
           <div className="flex justify-between items-end">
             <div>
@@ -74,12 +89,10 @@ export default async function PilarPage({ params }: { params: { pilar: string } 
           </div>
         </div>
 
-        {/* Gráfico */}
         <section className="mb-10">
            <ChartContainer logs={logs} consumos={consumos} color={theme.split(' ')[0].replace('text-', '')} />
         </section>
 
-        {/* Lista de Actividades */}
         <section>
           <h3 className="text-[#444] text-[10px] font-bold tracking-[0.2em] mb-4 uppercase">Actividades Recientes</h3>
           <div className="space-y-2">

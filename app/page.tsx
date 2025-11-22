@@ -1,108 +1,168 @@
 import { PrismaClient } from "@prisma/client";
-import { ChartContainer } from "@/components/ChartContainer";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { StatCard } from "@/components/StatCard"; // <--- AQUÍ ESTÁ LA MAGIA
 
 export const dynamic = 'force-dynamic';
+
 const prisma = new PrismaClient();
 
-async function getData(pilar: string) {
-  // Validación de seguridad por si pilar llega undefined
-  if (!pilar) return { pilar: "PLATA", currentStat: null, logs: [], consumos: [] };
-
-  const pilarUpper = pilar.toUpperCase() as "PLATA" | "PENSAR" | "FISICO" | "SOCIAL";
-  
-  const stats = await prisma.userStats.findFirst();
-  const map = {
-    "PLATA": { xp: stats?.xpPlata, lvl: stats?.lvlPlata },
-    "PENSAR": { xp: stats?.xpPensar, lvl: stats?.lvlPensar },
-    "FISICO": { xp: stats?.xpFisico, lvl: stats?.lvlFisico },
-    "SOCIAL": { xp: stats?.xpSocial, lvl: stats?.lvlSocial }
+async function getData() {
+  const stats = await prisma.userStats.findFirst() || { 
+    xpPlata: 0, lvlPlata: 1, xpPensar: 0, lvlPensar: 1, 
+    xpFisico: 0, lvlFisico: 1, xpSocial: 0, lvlSocial: 1 
   };
-  const currentStat = map[pilarUpper] || map["PLATA"];
 
-  const hace30dias = new Date();
-  hace30dias.setDate(hace30dias.getDate() - 30);
-
-  const logs = await prisma.logCiclo.findMany({
-    where: { pilar: pilarUpper, fin: { gte: hace30dias }, estado: 'COMPLETADO' },
-    orderBy: { fin: 'asc' }
+  const logros = await prisma.logCiclo.findMany({
+    where: { estado: 'COMPLETADO' },
+    take: 15,
+    orderBy: { fin: 'desc' }
   });
-  
-  let consumos: any[] = [];
-  if (pilarUpper === "FISICO") {
-    consumos = await prisma.logConsumo.findMany({
-      where: { timestamp: { gte: hace30dias }, xpGanada: { gt: 0 } },
-      orderBy: { timestamp: 'asc' }
-    });
-  }
 
-  return { pilar: pilarUpper, currentStat, logs, consumos };
+  const adicciones = await prisma.addiction.findMany({
+    orderBy: { ultimoRelapso: 'asc' }
+  });
+
+  return { stats, logros, adicciones };
 }
 
-// --- CAMBIO IMPORTANTE AQUÍ EN LA DEFINICIÓN DEL TIPO ---
-export default async function PilarPage({ params }: { params: Promise<{ pilar: string }> }) {
-  // --- AWAIT OBLIGATORIO PARA NEXT.JS 15 ---
-  const { pilar } = await params;
+function calcularNivelGlobal(totalXP: number) {
+  let nivel = 1;
+  let costo = 100;
+  let xp = totalXP;
+  while (xp >= costo) {
+    xp -= costo;
+    nivel++;
+    costo = nivel * 100;
+  }
+  return { nivel, xpRestante: xp, proximoNivel: costo };
+}
+
+function formatDuration(fecha: Date) {
+  const ahora = new Date();
+  const diffMs = ahora.getTime() - new Date(fecha).getTime();
+  const horas = Math.floor(diffMs / (1000 * 60 * 60));
+  if (horas < 24) return `${horas}hs`;
+  const dias = Math.floor(horas / 24);
+  const horasRestantes = horas % 24;
+  return `${dias}d ${horasRestantes}hs`;
+}
+
+export default async function Home() {
+  const { stats, logros, adicciones } = await getData();
   
-  const { currentStat, logs, consumos } = await getData(pilar);
-  const pilarUpper = pilar.toUpperCase();
-  
-  const colors: any = {
-    "PLATA": "text-emerald-400 border-emerald-900/30 bg-emerald-950/10",
-    "PENSAR": "text-blue-400 border-blue-900/30 bg-blue-950/10",
-    "FISICO": "text-red-400 border-red-900/30 bg-red-950/10",
-    "SOCIAL": "text-pink-400 border-pink-900/30 bg-pink-950/10"
+  const totalXP = stats.xpPlata + stats.xpPensar + stats.xpFisico + stats.xpSocial;
+  const global = calcularNivelGlobal(totalXP);
+
+  const getProgress = (xp: number, lvl: number) => {
+    const meta = lvl * 100;
+    const porcentaje = Math.min(100, Math.round((xp / meta) * 100));
+    return { porcentaje, meta };
   };
-  const theme = colors[pilarUpper] || colors["PLATA"];
+
+  const plata = getProgress(stats.xpPlata, stats.lvlPlata);
+  const pensar = getProgress(stats.xpPensar, stats.lvlPensar);
+  const fisico = getProgress(stats.xpFisico, stats.lvlFisico);
+  const social = getProgress(stats.xpSocial, stats.lvlSocial);
+
+  const porcentajeGlobal = global.proximoNivel > 0 
+    ? Math.min(100, Math.round((global.xpRestante / global.proximoNivel) * 100))
+    : 0;
 
   return (
-    <main className="min-h-screen bg-[#050505] text-white p-5 pb-20 font-sans">
-      <div className="max-w-md mx-auto">
+    <main className="min-h-screen bg-[#050505] text-white font-sans selection:bg-purple-500/30 pb-20">
+      <div className="max-w-md mx-auto flex flex-col p-5">
         
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
-          <Link href="/" className="p-2.5 bg-[#111] rounded-full border border-[#222] hover:bg-[#222] hover:border-[#444] transition-all active:scale-95">
-            <ArrowLeft size={18} className="text-neutral-400" />
-          </Link>
-          <h1 className={`text-xl font-black tracking-wide ${theme.split(' ')[0]}`}>{pilarUpper}</h1>
-        </div>
-
-        {/* Stats Card */}
-        <div className={`p-6 rounded-2xl border mb-8 ${theme}`}>
-          <div className="flex justify-between items-end">
-            <div>
-              <p className="text-[10px] font-bold opacity-70 mb-1 tracking-widest">NIVEL ACTUAL</p>
-              <p className="text-5xl font-black leading-none">{currentStat?.lvl || 1}</p>
+        <header className="mb-6 pt-4 text-center">
+          <div className="relative inline-block mb-4">
+            <h1 className="text-3xl font-black tracking-tighter bg-gradient-to-b from-white to-neutral-500 bg-clip-text text-transparent">
+              LIFE <span className="text-purple-500">OS</span>
+            </h1>
+            <span className="absolute -top-1 -right-6 bg-[#111] text-[9px] px-1.5 py-0.5 rounded border border-[#333] text-neutral-400">BETA</span>
+          </div>
+          
+          <div className="bg-[#111] border border-[#222] p-5 rounded-2xl shadow-2xl relative overflow-hidden group">
+            <div className="flex justify-between items-center mb-3 relative z-10">
+              <div className="text-left">
+                <p className="text-lg font-bold text-white">FRANCO</p>
+              </div>
+              <div className="text-right flex items-baseline gap-1.5">
+                <span className="text-xs font-bold text-neutral-600 tracking-widest">LVL</span>
+                <p className="text-2xl font-black text-yellow-400 leading-none">{global.nivel}</p>
+              </div>
             </div>
-            <div className="text-right">
-              <p className="text-[10px] font-bold opacity-70 mb-1 tracking-widest">XP TOTAL</p>
-              <p className="text-xl font-mono font-bold">{currentStat?.xp || 0}</p>
+            <div className="relative z-10">
+                <div className="flex justify-between text-[10px] text-neutral-600 font-mono mb-1.5">
+                    <span>XP TOTAL: {totalXP}</span>
+                    <span>{global.xpRestante} / {global.proximoNivel}</span>
+                </div>
+                <div className="h-2 w-full bg-[#000] rounded-full overflow-hidden border border-[#222]">
+                    <div className="h-full bg-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.4)] transition-all duration-1000" style={{ width: `${porcentajeGlobal}%` }} />
+                </div>
             </div>
           </div>
+        </header>
+
+        <div className="space-y-3 mb-8">
+          <StatCard emoji="💰" title="PLATA" lvl={stats.lvlPlata} xp={stats.xpPlata} meta={plata.meta} progress={plata.porcentaje} color="bg-emerald-500" />
+          <StatCard emoji="🧠" title="PENSAR" lvl={stats.lvlPensar} xp={stats.xpPensar} meta={pensar.meta} progress={pensar.porcentaje} color="bg-blue-500" />
+          <StatCard emoji="💪" title="FÍSICO" lvl={stats.lvlFisico} xp={stats.xpFisico} meta={fisico.meta} progress={fisico.porcentaje} color="bg-red-500" />
+          <StatCard emoji="❤️" title="SOCIAL" lvl={stats.lvlSocial} xp={stats.xpSocial} meta={social.meta} progress={social.porcentaje} color="bg-pink-500" />
         </div>
 
-        {/* Gráfico */}
-        <section className="mb-10">
-           <ChartContainer logs={logs} consumos={consumos} color={theme.split(' ')[0].replace('text-', '')} />
-        </section>
+        {adicciones.length > 0 && (
+          <section className="mb-8">
+            <h3 className="text-[#444] text-[10px] font-bold tracking-[0.2em] mb-4 uppercase text-left">Protocolos Activos 🛡️</h3>
+            <div className="grid grid-cols-1 gap-3">
+              {adicciones.map((adiccion) => {
+                const ahora = new Date();
+                const diffMs = ahora.getTime() - new Date(adiccion.ultimoRelapso).getTime();
+                const horasActuales = diffMs / (1000 * 60 * 60);
+                const porcentaje = adiccion.recordHoras > 0 
+                  ? Math.min(100, (horasActuales / adiccion.recordHoras) * 100) 
+                  : 0;
 
-        {/* Lista de Actividades */}
-        <section>
-          <h3 className="text-[#444] text-[10px] font-bold tracking-[0.2em] mb-4 uppercase">Actividades Recientes</h3>
+                return (
+                  <div key={adiccion.id} className="bg-gradient-to-b from-[#151515] to-[#0a0a0a] border border-[#222] p-4 rounded-xl">
+                    <div className="flex justify-between mb-2">
+                      <span className="text-xs font-bold text-neutral-300 uppercase tracking-wide">{adiccion.nombre}</span>
+                      <span className="text-[10px] font-bold text-neutral-500 bg-[#111] px-1.5 py-0.5 rounded border border-[#222]">RÉCORD: {(adiccion.recordHoras / 24).toFixed(1)}d</span>
+                    </div>
+                    <div className="flex items-baseline gap-2 mb-3">
+                      <span className="text-2xl font-black text-white tracking-tight">{formatDuration(adiccion.ultimoRelapso)}</span>
+                      <span className="text-xs text-neutral-600 font-medium">sin recaídas</span>
+                    </div>
+                    <div className="relative h-1.5 w-full bg-[#1a1a1a] rounded-full overflow-hidden border border-[#222]">
+                      <div className="absolute top-0 left-0 h-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)] transition-all duration-1000" style={{ width: `${porcentaje}%` }} />
+                    </div>
+                    <p className="text-[9px] text-right text-neutral-600 mt-1.5 font-mono">{porcentaje.toFixed(0)}% del récord</p>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        <section className="border-t border-[#222] pt-8">
+          <div className="flex items-center justify-center mb-6 opacity-50">
+            <span className="text-[10px] uppercase tracking-widest text-neutral-500">▼ Historial ▼</span>
+          </div>
           <div className="space-y-2">
-            {[...logs, ...consumos].sort((a,b) => new Date(b.fin || b.timestamp).getTime() - new Date(a.fin || a.timestamp).getTime()).slice(0, 10).map((item: any, i) => (
-               <div key={i} className="bg-[#0a0a0a] border border-[#222] p-3 rounded-lg flex justify-between items-center transition-colors hover:border-[#333]">
-                  <span className="text-xs text-neutral-300 font-medium truncate max-w-[200px]">{item.tarea || item.descripcion}</span>
-                  <span className="text-[10px] font-bold text-[#444] bg-[#111] px-2 py-1 rounded border border-[#222]">+{item.xpGanada} XP</span>
-               </div>
-            ))}
-            {[...logs, ...consumos].length === 0 && (
-                <div className="text-neutral-800 text-xs text-center py-8 border border-dashed border-[#222] rounded-lg">Sin datos aún en este pilar.</div>
+            {logros.length === 0 ? (
+              <div className="text-neutral-800 text-xs text-center py-8 border border-dashed border-[#222] rounded-lg">
+                Sin actividad reciente.
+              </div>
+            ) : (
+              logros.map((log) => (
+                <div key={log.id} className="bg-[#0a0a0a] border border-[#222] p-3 rounded-lg flex items-center justify-between transition-colors hover:border-[#333]">
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    <div className="w-6 h-6 min-w-[24px] rounded-full bg-[#111] border border-[#222] flex items-center justify-center text-[10px] text-green-500">✓</div>
+                    <span className="text-neutral-400 text-xs font-medium truncate">{log.tarea}</span>
+                  </div>
+                  <span className="text-[10px] font-bold text-[#444] bg-[#111] px-2 py-1 rounded border border-[#222] min-w-[50px] text-center">+{log.xpGanada} XP</span>
+                </div>
+              ))
             )}
           </div>
         </section>
-
       </div>
     </main>
   );
