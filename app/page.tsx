@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import Link from "next/link";
 
 export const dynamic = 'force-dynamic';
 
@@ -16,9 +17,8 @@ async function getData() {
     orderBy: { fin: 'desc' }
   });
 
-  // NUEVO: Buscamos las adicciones activas
   const adicciones = await prisma.addiction.findMany({
-    orderBy: { ultimoRelapso: 'asc' } // Las rachas más largas primero
+    orderBy: { ultimoRelapso: 'asc' }
   });
 
   return { stats, logros, adicciones };
@@ -36,7 +36,6 @@ function calcularNivelGlobal(totalXP: number) {
   return { nivel, xpRestante: xp, proximoNivel: costo };
 }
 
-// Helper para mostrar tiempo lindo (ej: "2d 4hs")
 function formatDuration(fecha: Date) {
   const ahora = new Date();
   const diffMs = ahora.getTime() - new Date(fecha).getTime();
@@ -65,6 +64,10 @@ export default async function Home() {
   const fisico = getProgress(stats.xpFisico, stats.lvlFisico);
   const social = getProgress(stats.xpSocial, stats.lvlSocial);
 
+  const porcentajeGlobal = global.proximoNivel > 0 
+    ? Math.min(100, Math.round((global.xpRestante / global.proximoNivel) * 100))
+    : 0;
+
   return (
     <main className="min-h-screen bg-[#050505] text-white font-sans selection:bg-purple-500/30 pb-20">
       <div className="max-w-md mx-auto flex flex-col p-5">
@@ -72,7 +75,9 @@ export default async function Home() {
         {/* HEADER */}
         <header className="mb-6 pt-4 text-center">
           <div className="relative inline-block mb-4">
-            <h1 className="text-4xl font-black tracking-tighter bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 bg-clip-text text-transparent">LIFE OS</h1>
+            <h1 className="text-3xl font-black tracking-tighter bg-gradient-to-b from-white to-neutral-500 bg-clip-text text-transparent">
+              LIFE <span className="text-purple-500">OS</span>
+            </h1>
             <span className="absolute -top-1 -right-6 bg-[#111] text-[9px] px-1.5 py-0.5 rounded border border-[#333] text-neutral-400">BETA</span>
           </div>
           
@@ -95,7 +100,7 @@ export default async function Home() {
                 <div className="h-2 w-full bg-[#000] rounded-full overflow-hidden border border-[#222]">
                     <div 
                         className="h-full bg-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.4)] transition-all duration-1000"
-                        style={{ width: `${(global.xpRestante / global.proximoNivel) * 100}%` }} 
+                        style={{ width: `${porcentajeGlobal}%` }} 
                     />
                 </div>
             </div>
@@ -110,15 +115,15 @@ export default async function Home() {
           <StatCard emoji="❤️" title="SOCIAL" lvl={stats.lvlSocial} xp={stats.xpSocial} meta={social.meta} progress={social.porcentaje} color="bg-pink-500" />
         </div>
 
-        {/* NUEVA SECCIÓN: DETOX TRACKER */}
+        {/* DETOX TRACKER */}
         {adicciones.length > 0 && (
           <section className="mb-8">
-            <h3 className="text-[#444] text-[10px] font-bold tracking-[0.2em] mb-4 uppercase text-left">Detox Tracker 🛡️</h3>
+            <h3 className="text-[#444] text-[10px] font-bold tracking-[0.2em] mb-4 uppercase text-left">Protocolos Activos 🛡️</h3>
             <div className="grid grid-cols-1 gap-3">
               {adicciones.map((adiccion) => {
-                // Calculamos % del record actual (tope 100%)
                 const ahora = new Date();
-                const horasActuales = (ahora.getTime() - new Date(adiccion.ultimoRelapso).getTime()) / (1000 * 60 * 60);
+                const diffMs = ahora.getTime() - new Date(adiccion.ultimoRelapso).getTime();
+                const horasActuales = diffMs / (1000 * 60 * 60);
                 const porcentaje = adiccion.recordHoras > 0 
                   ? Math.min(100, (horasActuales / adiccion.recordHoras) * 100) 
                   : 0;
@@ -126,23 +131,19 @@ export default async function Home() {
                 return (
                   <div key={adiccion.id} className="bg-gradient-to-b from-[#151515] to-[#0a0a0a] border border-[#222] p-4 rounded-xl">
                     <div className="flex justify-between mb-2">
-                      <span className="text-xs font-bold text-neutral-300 uppercase">{adiccion.nombre}</span>
-                      <span className="text-[10px] font-bold text-neutral-500">RÉCORD: {(adiccion.recordHoras / 24).toFixed(1)}d</span>
+                      <span className="text-xs font-bold text-neutral-300 uppercase tracking-wide">{adiccion.nombre}</span>
+                      <span className="text-[10px] font-bold text-neutral-500 bg-[#111] px-1.5 py-0.5 rounded border border-[#222]">RÉCORD: {(adiccion.recordHoras / 24).toFixed(1)}d</span>
                     </div>
                     
-                    <div className="flex items-baseline gap-1 mb-3">
-                      <span className="text-2xl font-black text-white">{formatDuration(adiccion.ultimoRelapso)}</span>
+                    <div className="flex items-baseline gap-2 mb-3">
+                      <span className="text-2xl font-black text-white tracking-tight">{formatDuration(adiccion.ultimoRelapso)}</span>
                       <span className="text-xs text-neutral-600 font-medium">sin recaídas</span>
                     </div>
 
-                    {/* Barra de progreso contra el récord */}
-                    <div className="relative h-1.5 w-full bg-[#1a1a1a] rounded-full overflow-hidden">
-                      <div 
-                        className="absolute top-0 left-0 h-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)] transition-all duration-1000" 
-                        style={{ width: `${porcentaje}%` }}
-                      />
+                    <div className="relative h-1.5 w-full bg-[#1a1a1a] rounded-full overflow-hidden border border-[#222]">
+                      <div className="absolute top-0 left-0 h-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)] transition-all duration-1000" style={{ width: `${porcentaje}%` }} />
                     </div>
-                    <p className="text-[9px] text-right text-neutral-600 mt-1 font-mono">{porcentaje.toFixed(0)}% del récord</p>
+                    <p className="text-[9px] text-right text-neutral-600 mt-1.5 font-mono">{porcentaje.toFixed(0)}% del récord</p>
                   </div>
                 );
               })}
@@ -153,9 +154,9 @@ export default async function Home() {
         {/* BITÁCORA SCROLLEABLE */}
         <section className="border-t border-[#222] pt-8">
           <div className="flex items-center justify-center mb-6 opacity-50">
-            <span className="text-[10px] uppercase tracking-widest text-neutral-500">▼ Scroll para historial ▼</span>
+            <span className="text-[10px] uppercase tracking-widest text-neutral-500">▼ Historial ▼</span>
           </div>
-          <h3 className="text-[#444] text-[10px] font-bold tracking-[0.2em] mb-4 uppercase text-left">Bitácora de Logros</h3>
+
           <div className="space-y-2">
             {logros.length === 0 ? (
               <div className="text-neutral-800 text-xs text-center py-8 border border-dashed border-[#222] rounded-lg">
@@ -181,24 +182,27 @@ export default async function Home() {
 }
 
 function StatCard({ emoji, title, lvl, xp, meta, progress, color }: any) {
+  const link = `/${title.toLowerCase()}`;
   return (
-    <div className="bg-[#111] border border-[#222] p-4 rounded-xl shadow-sm hover:border-[#333] transition-all">
-      <div className="flex justify-between items-center mb-3">
-        <div className="flex items-center gap-3">
-          <div className="text-xl bg-[#1a1a1a] w-10 h-10 flex items-center justify-center rounded-lg border border-[#2a2a2a]">{emoji}</div>
-          <div>
-            <h2 className="font-bold text-sm text-neutral-200 tracking-wide">{title}</h2>
-            <p className="text-[10px] text-neutral-500 font-bold">NIVEL <span className="text-white">{lvl}</span></p>
+    <Link href={link} className="block">
+      <div className="bg-[#111] border border-[#222] p-4 rounded-xl shadow-sm hover:border-[#444] hover:bg-[#151515] transition-all cursor-pointer group">
+        <div className="flex justify-between items-center mb-3">
+          <div className="flex items-center gap-3">
+            <div className="text-xl bg-[#1a1a1a] w-10 h-10 flex items-center justify-center rounded-lg border border-[#2a2a2a] group-hover:scale-110 transition-transform">{emoji}</div>
+            <div>
+              <h2 className="font-bold text-sm text-neutral-200 tracking-wide group-hover:text-white transition-colors">{title}</h2>
+              <p className="text-[10px] text-neutral-500 font-bold">NIVEL <span className="text-white">{lvl}</span></p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] text-neutral-500 font-bold mb-0.5">XP</p>
+            <p className="text-xs font-mono text-neutral-400">{xp} <span className="text-[#333]">/ {meta}</span></p>
           </div>
         </div>
-        <div className="text-right">
-          <p className="text-[10px] text-neutral-500 font-bold mb-0.5">XP</p>
-          <p className="text-xs font-mono text-neutral-400">{xp} <span className="text-[#333]">/ {meta}</span></p>
+        <div className="h-2 w-full bg-[#000] rounded-full overflow-hidden border border-[#222]">
+          <div className={`h-full ${color} transition-all duration-700 ease-out`} style={{ width: `${progress}%` }} />
         </div>
       </div>
-      <div className="h-2 w-full bg-[#000] rounded-full overflow-hidden border border-[#222]">
-        <div className={`h-full ${color} transition-all duration-700 ease-out`} style={{ width: `${progress}%` }} />
-      </div>
-    </div>
+    </Link>
   );
 }

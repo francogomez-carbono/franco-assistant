@@ -1,0 +1,101 @@
+import { PrismaClient } from "@prisma/client";
+import { ChartContainer } from "@/components/ChartContainer";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+
+export const dynamic = 'force-dynamic';
+const prisma = new PrismaClient();
+
+async function getData(pilar: string) {
+  const pilarUpper = pilar.toUpperCase() as "PLATA" | "PENSAR" | "FISICO" | "SOCIAL";
+  
+  const stats = await prisma.userStats.findFirst();
+  const map = {
+    "PLATA": { xp: stats?.xpPlata, lvl: stats?.lvlPlata },
+    "PENSAR": { xp: stats?.xpPensar, lvl: stats?.lvlPensar },
+    "FISICO": { xp: stats?.xpFisico, lvl: stats?.lvlFisico },
+    "SOCIAL": { xp: stats?.xpSocial, lvl: stats?.lvlSocial }
+  };
+  const currentStat = map[pilarUpper];
+
+  const hace30dias = new Date();
+  hace30dias.setDate(hace30dias.getDate() - 30);
+
+  const logs = await prisma.logCiclo.findMany({
+    where: { pilar: pilarUpper, fin: { gte: hace30dias }, estado: 'COMPLETADO' },
+    orderBy: { fin: 'asc' }
+  });
+  
+  let consumos: any[] = [];
+  if (pilarUpper === "FISICO") {
+    consumos = await prisma.logConsumo.findMany({
+      where: { timestamp: { gte: hace30dias }, xpGanada: { gt: 0 } },
+      orderBy: { timestamp: 'asc' }
+    });
+  }
+
+  return { pilar: pilarUpper, currentStat, logs, consumos };
+}
+
+export default async function PilarPage({ params }: { params: { pilar: string } }) {
+  const { pilar, currentStat, logs, consumos } = await getData(params.pilar);
+  
+  const colors: any = {
+    "PLATA": "text-emerald-400 border-emerald-900/30 bg-emerald-950/10",
+    "PENSAR": "text-blue-400 border-blue-900/30 bg-blue-950/10",
+    "FISICO": "text-red-400 border-red-900/30 bg-red-950/10",
+    "SOCIAL": "text-pink-400 border-pink-900/30 bg-pink-950/10"
+  };
+  const theme = colors[pilar] || colors["PLATA"];
+
+  return (
+    <main className="min-h-screen bg-[#050505] text-white p-5 pb-20 font-sans">
+      <div className="max-w-md mx-auto">
+        
+        {/* Header */}
+        <div className="flex items-center gap-4 mb-8">
+          <Link href="/" className="p-2.5 bg-[#111] rounded-full border border-[#222] hover:bg-[#222] hover:border-[#444] transition-all active:scale-95">
+            <ArrowLeft size={18} className="text-neutral-400" />
+          </Link>
+          <h1 className={`text-xl font-black tracking-wide ${theme.split(' ')[0]}`}>{pilar}</h1>
+        </div>
+
+        {/* Stats Card */}
+        <div className={`p-6 rounded-2xl border mb-8 ${theme}`}>
+          <div className="flex justify-between items-end">
+            <div>
+              <p className="text-[10px] font-bold opacity-70 mb-1 tracking-widest">NIVEL ACTUAL</p>
+              <p className="text-5xl font-black leading-none">{currentStat?.lvl || 1}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] font-bold opacity-70 mb-1 tracking-widest">XP TOTAL</p>
+              <p className="text-xl font-mono font-bold">{currentStat?.xp || 0}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Gráfico */}
+        <section className="mb-10">
+           <ChartContainer logs={logs} consumos={consumos} color={theme.split(' ')[0].replace('text-', '')} />
+        </section>
+
+        {/* Lista de Actividades */}
+        <section>
+          <h3 className="text-[#444] text-[10px] font-bold tracking-[0.2em] mb-4 uppercase">Actividades Recientes</h3>
+          <div className="space-y-2">
+            {[...logs, ...consumos].sort((a,b) => new Date(b.fin || b.timestamp).getTime() - new Date(a.fin || a.timestamp).getTime()).slice(0, 10).map((item: any, i) => (
+               <div key={i} className="bg-[#0a0a0a] border border-[#222] p-3 rounded-lg flex justify-between items-center transition-colors hover:border-[#333]">
+                  <span className="text-xs text-neutral-300 font-medium truncate max-w-[200px]">{item.tarea || item.descripcion}</span>
+                  <span className="text-[10px] font-bold text-[#444] bg-[#111] px-2 py-1 rounded border border-[#222]">+{item.xpGanada} XP</span>
+               </div>
+            ))}
+            {[...logs, ...consumos].length === 0 && (
+                <div className="text-neutral-800 text-xs text-center py-8 border border-dashed border-[#222] rounded-lg">Sin datos aún en este pilar.</div>
+            )}
+          </div>
+        </section>
+
+      </div>
+    </main>
+  );
+}
