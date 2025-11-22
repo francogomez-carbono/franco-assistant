@@ -4,7 +4,6 @@ import OpenAI from "openai";
 
 export const dynamic = 'force-dynamic';
 
-// --- CONEXIÓN OPTIMIZADA ---
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 const prisma = globalForPrisma.prisma || new PrismaClient();
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
@@ -13,17 +12,17 @@ const token = process.env.TELEGRAM_TOKEN;
 const bot = token ? new Bot(token) : null;
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// --- PROMPT BALANCEADO ---
 const SYSTEM_PROMPT = `
-Rol: Asistente y compañero de Franco.
-Tarea: Estructurar datos y responder con empatía.
-Tono: Argentino suave, motivador, casual.
+Rol: Asistente personal de Franco.
+Tarea: Estructurar datos y responder confirmando la acción.
+Tono: Argentino suave, directo, eficiente pero amigable.
 
 REGLAS DE RESPUESTA ("reply"):
-- NO seas robótico. Usa 1 o 2 frases naturales.
-- Si es trabajo (PLATA): Deséale foco o felicítalo.
-- Si es consumo: Confirma con buena onda.
-- Si es estado: Muestra empatía real.
+- IMPORTANTE: Siempre confirma explícitamente que estás guardando el dato (Usa verbos como: "Anoto", "Registro", "Guardo", "Agendo").
+- Combina la confirmación con un comentario breve de empatía o motivación.
+- EJEMPLO 1: "Listo, anoto la naranja 🍊."
+- EJEMPLO 2: "Dale, registro que arrancás con el backend. ¡Metele foco! 🚀"
+- EJEMPLO 3: "Uff, guardado ese nivel de energía bajo. A descansar un toque."
 
 CATEGORÍAS:
 - PLATA: Trabajo, Dinero.
@@ -36,7 +35,7 @@ JSON (Strict):
   "events": [
     {
       "type": "estado"|"consumo"|"ciclo_inicio"|"ciclo_fin"|"nota",
-      "reply": "Frase natural y empática aquí",
+      "reply": "Frase que confirma registro + empatía",
       "energia": 1-5, "concentracion": 1-5, "resumen": "txt",
       "clase": "COMIDA"|"LIQUIDO", "descripcion": "txt", "cantidad": num,
       "tarea": "txt", "pilar": "PLATA"|"PENSAR"|"FISICO"|"SOCIAL",
@@ -54,8 +53,8 @@ const handleMessage = async (ctx: any) => {
         const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini",
             messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: text }],
-            temperature: 0.7, // Subimos un poco para que tenga "chispa"
-            max_tokens: 250,  // Damos espacio para una frase completa
+            temperature: 0.6, 
+            max_tokens: 250,
             response_format: { type: "json_object" }
         });
 
@@ -99,7 +98,7 @@ const handleMessage = async (ctx: any) => {
 
     } catch (e) {
         console.error("ERROR:", e);
-        await ctx.reply("⚠️ El sistema tardó en responder. Probá de nuevo.");
+        await ctx.reply("⚠️ Tardé mucho en procesar, pero intentá de nuevo.");
     }
 };
 
