@@ -5,7 +5,6 @@ import OpenAI from "openai";
 export const dynamic = 'force-dynamic';
 
 const token = process.env.TELEGRAM_TOKEN;
-// Si estamos construyendo la app y no hay token, no falla, pero no inicia el bot
 const bot = token ? new Bot(token) : null;
 const prisma = new PrismaClient();
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -18,31 +17,41 @@ CATEGORÍAS:
 3. CICLO_INICIO: {"type": "ciclo_inicio", "tarea": "string", "pilar": "PLATA" o "PENSAR"}
 4. CICLO_FIN: {"type": "ciclo_fin", "resultado": "string"}
 Si no encaja: {"type": "nota", "texto": "string"}
-Responde SOLO JSON.
+IMPORTANTE: Responde SOLO el objeto JSON.
 `;
 
-// Lógica principal del mensaje
 const handleMessage = async (ctx: any) => {
     if (!ctx.message.text) return;
     const text = ctx.message.text;
     
-    // Feedback visual rápido
-    await ctx.reply("⏳ ...");
+    // Feedback visual (escribiendo...)
+    await bot?.api.sendChatAction(ctx.chat.id, "typing");
 
     try {
-        // 1. Consultar a OpenAI
         const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini",
             messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: text }],
             temperature: 0,
+            // ESTO ES NUEVO: Fuerza a la IA a devolver JSON válido sí o sí
+            response_format: { type: "json_object" }
         });
 
         const raw = completion.choices[0].message.content || "{}";
-        const cleanJson = raw.replace(/```json/g, "").replace(/```/g, "").trim();
-        const data = JSON.parse(cleanJson);
+        
+        // ESTO ES NUEVO: Cirugía para extraer solo el JSON si la IA agrega texto extra
+        const firstBrace = raw.indexOf('{');
+        const lastBrace = raw.lastIndexOf('}');
+        
+        let data;
+        if (firstBrace !== -1 && lastBrace !== -1) {
+            const cleanJson = raw.substring(firstBrace, lastBrace + 1);
+            data = JSON.parse(cleanJson);
+        } else {
+            data = JSON.parse(raw); // Intento directo si no encuentra llaves
+        }
+
         let respuesta = "";
 
-        // 2. Guardar en la Base de Datos según el tipo
         switch (data.type) {
             case "estado":
                 await prisma.logEstado.create({ data: { energia: data.energia, concentracion: data.concentracion, inputUsuario: text, notasIA: data.resumen } });
@@ -68,15 +77,13 @@ const handleMessage = async (ctx: any) => {
         }
         await ctx.reply(respuesta);
     } catch (e) {
-        console.error(e);
+        console.error("ERROR REAL:", e); // Esto aparecerá en los logs de Vercel si falla
         await ctx.reply("❌ Error procesando.");
     }
 };
 
-// Solo activamos el listener si el bot se inicializó correctamente
 if (bot) {
     bot.on("message:text", handleMessage);
 }
 
-// Exportamos la función POST para que Vercel/Telegram la usen
 export const POST = bot ? webhookCallback(bot, "std/http") : async () => Response.json({ error: "No token provided" });
