@@ -1,36 +1,43 @@
 "use client";
 
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Activity, Zap } from "lucide-react";
+import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, BarChart, Bar, PieChart, Pie, Cell, Legend } from "recharts";
+import { Zap, PieChart as PieIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export function EnergyChart({ data }: { data: any[] }) {
-  const chartData = data.length > 0 ? data : [
-    { fecha: "Mon", energia: 3, foco: 2 },
-    { fecha: "Tue", energia: 4, foco: 4 },
-  ];
+  const [range, setRange] = useState<"7D" | "30D">("7D");
+  const filteredData = range === "7D" ? data.slice(-7) : data.slice(-30);
+  const chartData = filteredData.length > 0 ? filteredData : [{ fecha: "Hoy", energia: 0, foco: 0 }];
 
   return (
-    <Card className="col-span-4 border-neutral-800 bg-neutral-900/50 text-neutral-100">
-      <CardHeader>
+    <Card className="col-span-1 lg:col-span-2 border-neutral-800 bg-neutral-900/50 text-neutral-100 h-full">
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-lg font-medium flex items-center gap-2">
           <Zap className="h-4 w-4 text-yellow-400" />
-          Rendimiento Semanal
+          Rendimiento {range === "7D" ? "Semanal" : "Mensual"}
         </CardTitle>
+        <div className="flex items-center gap-1 bg-neutral-900 p-1 rounded-lg border border-neutral-800">
+          <button onClick={() => setRange("7D")} className={cn("text-xs font-medium px-3 py-1 rounded-md transition-all", range === "7D" ? "bg-neutral-800 text-white shadow-sm" : "text-neutral-500 hover:text-neutral-300")}>7D</button>
+          <button onClick={() => setRange("30D")} className={cn("text-xs font-medium px-3 py-1 rounded-md transition-all", range === "30D" ? "bg-neutral-800 text-white shadow-sm" : "text-neutral-500 hover:text-neutral-300")}>30D</button>
+        </div>
       </CardHeader>
-      <CardContent className="h-[300px]">
+      {/* AUMENTO DE ALTURA A 350px */}
+      <CardContent className="h-[350px]">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={chartData}>
+          <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="colorEnergia" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#eab308" stopOpacity={0.3} />
                 <stop offset="95%" stopColor="#eab308" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <XAxis dataKey="fecha" stroke="#525252" fontSize={12} tickLine={false} axisLine={false} />
-            <YAxis stroke="#525252" fontSize={12} tickLine={false} axisLine={false} domain={[0, 5]} />
-            <Tooltip contentStyle={{ backgroundColor: "#171717", border: "1px solid #262626" }} itemStyle={{ color: "#e5e5e5" }} />
-            <Area type="monotone" dataKey="energia" stroke="#eab308" fillOpacity={1} fill="url(#colorEnergia)" strokeWidth={2} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
+            <XAxis dataKey="fecha" stroke="#525252" fontSize={12} tickLine={false} axisLine={false} interval={range === "30D" ? 2 : 0} />
+            <YAxis stroke="#525252" fontSize={12} tickLine={false} axisLine={false} domain={[0, 5]} tickCount={6} allowDecimals={false}/>
+            <Tooltip contentStyle={{ backgroundColor: "#171717", border: "1px solid #262626", borderRadius: "8px" }} itemStyle={{ color: "#e5e5e5" }} />
+            <Area type="monotone" dataKey="energia" stroke="#eab308" fillOpacity={1} fill="url(#colorEnergia)" strokeWidth={2} activeDot={{ r: 6 }}/>
           </AreaChart>
         </ResponsiveContainer>
       </CardContent>
@@ -38,46 +45,60 @@ export function EnergyChart({ data }: { data: any[] }) {
   );
 }
 
-export function ProductivityHeatmap({ logs }: { logs: any[] }) {
-  const matrix = Array.from({ length: 7 }, () => Array(24).fill(0));
-  logs.forEach(log => {
-    const date = new Date(log.inicio);
-    const day = date.getDay(); 
-    const hour = date.getHours(); 
-    matrix[day][hour] += 1; 
-  });
-
-  const days = ["D", "L", "M", "M", "J", "V", "S"];
-  const getColor = (count: number) => {
-    if (count === 0) return "bg-neutral-800/50";
-    if (count === 1) return "bg-orange-900/60";
-    if (count >= 2) return "bg-orange-500";
-    return "bg-neutral-800";
-  };
+export function XPDonutChart({ stats }: { stats: any }) {
+  const data = [
+    { name: 'Plata', value: stats.xpPlata, color: '#10b981' },
+    { name: 'Pensar', value: stats.xpPensar, color: '#3b82f6' },
+    { name: 'Físico', value: stats.xpFisico, color: '#f97316' },
+    { name: 'Social', value: stats.xpSocial, color: '#f43f5e' },
+  ].filter(item => item.value > 0);
+  
+  const finalData = data.length > 0 ? data : [{ name: 'Sin Datos', value: 1, color: '#333' }];
 
   return (
-    <Card className="col-span-3 border-neutral-800 bg-neutral-900/50 text-neutral-100">
+    <Card className="col-span-1 lg:col-span-1 border-neutral-800 bg-neutral-900/50 text-neutral-100 h-full">
       <CardHeader>
         <CardTitle className="text-lg font-medium flex items-center gap-2">
-          <Activity className="h-4 w-4 text-orange-500" />
-          Matriz de Foco
+          <PieIcon className="h-4 w-4 text-purple-400" />
+          Origen de XP
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="flex flex-col gap-1">
-          <div className="flex justify-between text-[10px] text-neutral-500 px-6 mb-1">
-            <span>00h</span><span>12h</span><span>23h</span>
-          </div>
-          {matrix.map((row, dayIndex) => (
-            <div key={dayIndex} className="flex items-center gap-1 h-6">
-              <span className="w-4 text-[10px] text-neutral-500 text-right mr-1">{days[dayIndex]}</span>
-              {row.map((count, hourIndex) => (
-                <div key={hourIndex} className={`flex-1 h-full rounded-sm ${getColor(count)}`} title={`${count} Bloques`} />
+      {/* AUMENTO DE ALTURA A 350px */}
+      <CardContent className="h-[350px] flex items-center justify-center">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={finalData}
+              cx="50%"
+              cy="50%"
+              innerRadius={80} 
+              outerRadius={110}
+              paddingAngle={5}
+              dataKey="value"
+              stroke="none"
+            >
+              {finalData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.color} />
               ))}
-            </div>
-          ))}
-        </div>
+            </Pie>
+            <Tooltip contentStyle={{ backgroundColor: "#171717", border: "1px solid #262626", borderRadius: "8px" }} itemStyle={{ color: "#fff" }} />
+            <Legend verticalAlign="bottom" height={36} iconType="circle"/>
+          </PieChart>
+        </ResponsiveContainer>
       </CardContent>
     </Card>
   );
+}
+
+export function PillarBarChart({ data }: { data: any[] }) {
+    return (
+      <ResponsiveContainer width="100%" height={200}>
+        <BarChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
+          <XAxis dataKey="day" stroke="#525252" fontSize={12} tickLine={false} axisLine={false} />
+          <Tooltip cursor={{fill: '#262626'}} contentStyle={{ backgroundColor: "#171717", border: "1px solid #262626" }} itemStyle={{ color: "#fff" }} />
+          <Bar dataKey="xp" fill="#ef4444" radius={[4, 4, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    )
 }

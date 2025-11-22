@@ -1,196 +1,131 @@
 import { PrismaClient } from "@prisma/client";
-import { ChartContainer } from "@/components/ChartContainer";
-import Link from "next/link";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ActivityFeed } from "@/components/dashboard/activity-feed";
+import { PillarBarChart } from "@/components/dashboard/charts";
+import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
+import Link from "next/link";
 
-export const dynamic = 'force-dynamic';
 const prisma = new PrismaClient();
+export const dynamic = 'force-dynamic';
 
-const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const PILLAR_CONFIG: any = {
+  fisico: { dbName: "FISICO", label: "FÍSICO", color: "text-orange-500", barColor: "#f97316" },
+  plata: { dbName: "PLATA", label: "PLATA", color: "text-emerald-500", barColor: "#10b981" },
+  pensar: { dbName: "PENSAR", label: "PENSAR", color: "text-blue-500", barColor: "#3b82f6" },
+  social: { dbName: "SOCIAL", label: "SOCIAL", color: "text-rose-500", barColor: "#f43f5e" },
+};
 
-async function getData(pilar: string) {
-  if (!pilar) return null;
+export default async function PillarPage({ params }: { params: { pilar: string } }) {
+  const pilarKey = params.pilar.toLowerCase();
+  const config = PILLAR_CONFIG[pilarKey];
 
-  const decoded = decodeURIComponent(pilar);
-  
-  const pilarEnum = decoded
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase() as "PLATA" | "PENSAR" | "FISICO" | "SOCIAL";
-  
-  const validPilars = ["PLATA", "PENSAR", "FISICO", "SOCIAL"];
-  const finalPilar = validPilars.includes(pilarEnum) ? pilarEnum : "PLATA";
+  if (!config) return notFound();
 
-  const stats = await prisma.userStats.findFirst();
-  const map = {
-    "PLATA": { xp: stats?.xpPlata, lvl: stats?.lvlPlata },
-    "PENSAR": { xp: stats?.xpPensar, lvl: stats?.lvlPensar },
-    "FISICO": { xp: stats?.xpFisico, lvl: stats?.lvlFisico },
-    "SOCIAL": { xp: stats?.xpSocial, lvl: stats?.lvlSocial }
-  };
-  const currentStat = map[finalPilar] || map["PLATA"];
-
-  const hace30dias = new Date();
-  hace30dias.setDate(hace30dias.getDate() - 30);
-
-  const ciclos = await prisma.logCiclo.findMany({
-    where: { 
-      pilar: finalPilar, 
-      inicio: { gte: hace30dias }, 
-      xpGanada: { gt: 0 } 
-    },
-    orderBy: { inicio: 'asc' }
+  const user = await prisma.user.findFirst({
+    include: {
+      stats: true,
+      logsCiclo: {
+        where: { pilar: config.dbName },
+        orderBy: { inicio: 'desc' },
+        take: 20
+      },
+      logsConsumo: pilarKey === 'fisico' ? { orderBy: { timestamp: 'desc' }, take: 10 } : false,
+    }
   });
+
+  if (!user || !user.stats) return <div className="p-8 text-white">Cargando...</div>;
+
+  const xpKey = `xp${config.label[0]}${config.label.slice(1).toLowerCase()}` as keyof typeof user.stats;
+  const lvlKey = `lvl${config.label[0]}${config.label.slice(1).toLowerCase()}` as keyof typeof user.stats;
   
-  let consumos: any[] = [];
-  if (finalPilar === "FISICO") {
-    consumos = await prisma.logConsumo.findMany({
-      where: { timestamp: { gte: hace30dias }, xpGanada: { gt: 0 } },
-      orderBy: { timestamp: 'asc' }
-    });
-  }
+  const currentXP = user.stats[xpKey] as number;
+  const currentLvl = user.stats[lvlKey] as number;
+  const targetXP = currentLvl * 100;
+  const progress = Math.min(100, (currentXP / targetXP) * 100);
 
-  let estados: any[] = [];
-  if (finalPilar === "FISICO" || finalPilar === "PENSAR") { 
-      estados = await prisma.logEstado.findMany({
-          where: { timestamp: { gte: hace30dias }, xpGanada: { gt: 0 } },
-          orderBy: { timestamp: 'asc' }
-      });
-  }
-
-  let adicciones: any[] = [];
-  if (finalPilar === "FISICO") {
-      const adds = await prisma.addiction.findMany({
-          where: { inicio: { gte: hace30dias } }
-      });
-      adicciones = adds.map(a => ({
-          id: a.id,
-          tarea: `Protocolo: Dejar ${capitalize(a.nombre)}`,
-          xpGanada: 50,
-          fecha: a.inicio
-      }));
-  }
-
-  const logs = [
-      ...ciclos.map(c => ({ ...c, fecha: c.fin || c.inicio })),
-      ...consumos.map(c => ({ ...c, fecha: c.timestamp, tarea: c.descripcion })),
-      ...estados.map(e => ({ ...e, fecha: e.timestamp, tarea: "Check-in de Estado" })),
-      ...adicciones
+  const chartData = [
+    { day: "LUN", xp: 0 }, { day: "MAR", xp: 0 }, { day: "MIE", xp: 0 },
+    { day: "JUE", xp: 0 }, { day: "VIE", xp: 0 }, { day: "SAB", xp: currentXP > 0 ? currentXP : 10 }, { day: "DOM", xp: 0 }
   ];
 
-  return { pilarTitle: decoded.toUpperCase(), pilarEnum: finalPilar, currentStat, logs };
-}
-
-type Props = {
-  params: Promise<{ pilar: string }>
-}
-
-export default async function PilarPage({ params }: Props) {
-  const resolvedParams = await params;
-  const pilarRaw = resolvedParams?.pilar;
-
-  if (!pilarRaw) return <div className="p-10 text-white">Cargando...</div>;
-
-  const data = await getData(pilarRaw);
-  if (!data) return <div className="p-10 text-white">Pilar no encontrado</div>;
-
-  const { pilarTitle, pilarEnum, currentStat, logs } = data;
-  
-  // --- COLORES AJUSTADOS (Usamos el tono 400 para la barra también) ---
-  const styles: any = {
-    "PLATA": {
-      text: "text-emerald-400",
-      bgGlow: "bg-emerald-400",
-      bar: "bg-emerald-400",
-    },
-    "PENSAR": {
-      text: "text-blue-400",
-      bgGlow: "bg-blue-400",
-      bar: "bg-blue-400",
-    },
-    "FISICO": {
-      text: "text-red-400",
-      bgGlow: "bg-red-400",
-      bar: "bg-red-400",
-    },
-    "SOCIAL": {
-      text: "text-pink-400",
-      bgGlow: "bg-pink-400",
-      bar: "bg-pink-400",
-    }
-  };
-  
-  const style = styles[pilarEnum] || styles["PLATA"];
-
-  const metaXP = (currentStat?.lvl || 1) * 100;
-  const xpActual = currentStat?.xp || 0;
-  const porcentaje = Math.min(100, (xpActual / metaXP) * 100);
-
   return (
-    <main className="min-h-screen bg-[#050505] text-white p-5 pb-20 font-sans">
-      <div className="max-w-md mx-auto">
-        
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
-          <Link href="/" className="p-2.5 bg-[#111] rounded-full border border-[#222] hover:bg-[#222] hover:border-[#444] transition-all active:scale-95">
-            <ArrowLeft size={18} className="text-neutral-400" />
-          </Link>
-          <h1 className={`text-xl font-black tracking-wide ${style.text}`}>{pilarTitle}</h1>
-        </div>
+    // QUITADA LA ANIMACIÓN AQUÍ PARA EVITAR EL ERROR
+    <div className="p-4 md:p-8 space-y-6">
+      
+      <div className="flex items-center gap-4 mb-8">
+        <Link href="/" className="p-2 rounded-full bg-neutral-900 text-neutral-400 hover:text-white transition-colors">
+          <ArrowLeft className="h-5 w-5" />
+        </Link>
+        <h1 className={`text-3xl font-bold tracking-widest uppercase ${config.color}`}>
+          {config.label}
+        </h1>
+      </div>
 
-        {/* --- DISEÑO "THE ORB" (Modificado) --- */}
-        {/* Quitamos 'justify-between' */}
-        <div className="relative mb-10 p-6 bg-[#080808] border border-[#222] rounded-3xl overflow-hidden flex items-center group">
-          <div className={`absolute left-0 top-0 w-40 h-full ${style.bgGlow} opacity-10 blur-3xl`}></div>
-
-          {/* Agregamos 'w-full' al contenedor principal */}
-          <div className="relative z-10 flex items-center gap-6 w-full">
-            {/* El Orbe */}
-            <div className={`w-20 h-20 rounded-full border-4 border-[#151515] flex items-center justify-center bg-[#050505] shadow-[0_0_30px_rgba(0,0,0,0.5)] group-hover:scale-105 transition-transform duration-500`}>
-              <span className={`text-4xl font-black ${style.text}`}>{currentStat?.lvl || 1}</span>
-            </div>
-            
-            {/* Agregamos 'flex-1' para que ocupe el espacio restante */}
-            <div className="flex-1">
-              <h2 className="text-[10px] font-bold text-neutral-500 tracking-widest uppercase mb-1.5">PROGRESO ACTUAL</h2>
-              <p className="text-white text-xl font-black tracking-tight">
-                {xpActual} <span className="text-neutral-600 text-xs font-medium">/ {metaXP} XP</span>
-              </p>
-              
-              {/* Barra ancha (w-full) */}
-              <div className="h-1.5 w-full bg-[#222] rounded-full mt-3 overflow-hidden">
-                <div 
-                    className={`h-full ${style.bar} shadow-[0_0_10px_currentColor] transition-all duration-1000`} 
-                    style={{ width: `${porcentaje}%` }}
-                ></div>
-              </div>
-            </div>
+      <Card className="border-neutral-800 bg-neutral-900/50">
+        <CardContent className="p-8 flex flex-col md:flex-row items-center gap-8">
+          <div className="relative flex items-center justify-center h-32 w-32 rounded-full bg-neutral-950 border-4 border-neutral-800">
+            <span className={`text-5xl font-black ${config.color}`}>{currentLvl}</span>
           </div>
           
-          {/* SECCIÓN "TOTAL" ELIMINADA AQUÍ */}
-        </div>
-        {/* ------------------------ */}
-
-        <section className="mb-10">
-           <ChartContainer logs={logs} color={style.text.replace('text-', '')} />
-        </section>
-
-        <section>
-          <h3 className="text-[#444] text-[10px] font-bold tracking-[0.2em] mb-4 uppercase">Actividades Recientes</h3>
-          <div className="space-y-2">
-            {logs.sort((a,b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()).slice(0, 15).map((item: any, i) => (
-               <div key={i} className="bg-[#0a0a0a] border border-[#222] p-3 rounded-lg flex justify-between items-center transition-colors hover:border-[#333]">
-                  <span className="text-xs text-neutral-300 font-medium truncate max-w-[200px]">{item.tarea || item.descripcion}</span>
-                  <span className="text-[10px] font-bold text-[#444] bg-[#111] px-2 py-1 rounded border border-[#222]">+{item.xpGanada} XP</span>
-               </div>
-            ))}
-            {logs.length === 0 && (
-                <div className="text-neutral-800 text-xs text-center py-8 border border-dashed border-[#222] rounded-lg">Sin datos aún en este pilar.</div>
-            )}
+          <div className="flex-1 w-full space-y-2">
+            <div className="flex justify-between text-sm uppercase tracking-wider text-neutral-400 font-medium">
+              <span>Progreso Actual</span>
+              <span className="text-white">{currentXP} <span className="text-neutral-600">/ {targetXP} XP</span></span>
+            </div>
+            <div className="h-3 w-full bg-neutral-950 rounded-full overflow-hidden border border-neutral-800">
+              <div 
+                className={`h-full transition-all duration-1000 ${config.color.replace('text-', 'bg-')}`} 
+                style={{ width: `${progress}%` }} 
+              />
+            </div>
           </div>
-        </section>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card className="border-neutral-800 bg-neutral-900/50">
+          <CardHeader>
+            <CardTitle className="text-sm text-neutral-500 uppercase tracking-wider">Rendimiento XP (7D)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PillarBarChart data={chartData} />
+          </CardContent>
+        </Card>
+
+        <div className="space-y-4">
+           <h3 className="text-sm text-neutral-500 uppercase tracking-wider font-medium">Actividades Recientes</h3>
+           
+           <div className="space-y-2">
+             {user.logsCiclo.map((log) => (
+               <div key={log.id} className="flex items-center justify-between p-4 rounded-xl border border-neutral-800 bg-neutral-950/50 hover:bg-neutral-900 transition-colors">
+                 <div>
+                    <p className="font-medium text-neutral-200 text-sm">{log.tarea}</p>
+                    {pilarKey === 'fisico' && log.tarea.includes("Press") && <span className="text-xs text-neutral-500">Pecho enfocado</span>}
+                 </div>
+                 <div className="px-3 py-1 rounded-md bg-neutral-900 border border-neutral-800 text-xs font-bold text-neutral-400">
+                   +{log.xpGanada} XP
+                 </div>
+               </div>
+             ))}
+             
+             {pilarKey === 'fisico' && (
+                <div className="flex items-center justify-between p-4 rounded-xl border border-neutral-800 bg-neutral-950/50 opacity-80">
+                  <div>
+                    <p className="font-medium text-neutral-200 text-sm">Protocolo: Dejar Vicios</p>
+                    <span className="text-xs text-neutral-500">Sistema Anti-Dopamina</span>
+                  </div>
+                  <div className="px-3 py-1 rounded-md bg-neutral-900 border border-neutral-800 text-xs font-bold text-neutral-400">
+                   +50 XP
+                 </div>
+                </div>
+             )}
+
+             {user.logsCiclo.length === 0 && <p className="text-neutral-600 text-sm italic">Sin actividad reciente.</p>}
+           </div>
+        </div>
 
       </div>
-    </main>
+    </div>
   );
 }

@@ -11,14 +11,18 @@ interface StatsProps {
 }
 
 export function StatsGrid({ stats }: StatsProps) {
+  // Calculamos el progreso
   const getProgress = (xp: number, lvl: number) => Math.min(100, (xp / (lvl * 100)) * 100);
+  
+  // Formato de texto: "60 / 100 XP"
+  const getText = (xp: number, lvl: number) => `${xp} / ${lvl * 100} XP`;
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
-      <KpiCard title="Plata" icon={<DollarSign className="h-4 w-4 text-emerald-400" />} value={"Lvl " + stats.lvlPlata} subtext={stats.xpPlata + " XP"} progress={getProgress(stats.xpPlata, stats.lvlPlata)} color="bg-emerald-500" />
-      <KpiCard title="Pensar" icon={<Brain className="h-4 w-4 text-blue-400" />} value={"Lvl " + stats.lvlPensar} subtext={stats.xpPensar + " XP"} progress={getProgress(stats.xpPensar, stats.lvlPensar)} color="bg-blue-500" />
-      <KpiCard title="Físico" icon={<Zap className="h-4 w-4 text-orange-400" />} value={"Lvl " + stats.lvlFisico} subtext={stats.xpFisico + " XP"} progress={getProgress(stats.xpFisico, stats.lvlFisico)} color="bg-orange-500" />
-      <KpiCard title="Social" icon={<Heart className="h-4 w-4 text-rose-400" />} value={"Lvl " + stats.lvlSocial} subtext={stats.xpSocial + " XP"} progress={getProgress(stats.xpSocial, stats.lvlSocial)} color="bg-rose-500" />
+      <KpiCard title="Plata" icon={<DollarSign className="h-4 w-4 text-emerald-400" />} value={"Lvl " + stats.lvlPlata} subtext={getText(stats.xpPlata, stats.lvlPlata)} progress={getProgress(stats.xpPlata, stats.lvlPlata)} color="bg-emerald-500" />
+      <KpiCard title="Pensar" icon={<Brain className="h-4 w-4 text-blue-400" />} value={"Lvl " + stats.lvlPensar} subtext={getText(stats.xpPensar, stats.lvlPensar)} progress={getProgress(stats.xpPensar, stats.lvlPensar)} color="bg-blue-500" />
+      <KpiCard title="Físico" icon={<Zap className="h-4 w-4 text-orange-400" />} value={"Lvl " + stats.lvlFisico} subtext={getText(stats.xpFisico, stats.lvlFisico)} progress={getProgress(stats.xpFisico, stats.lvlFisico)} color="bg-orange-500" />
+      <KpiCard title="Social" icon={<Heart className="h-4 w-4 text-rose-400" />} value={"Lvl " + stats.lvlSocial} subtext={getText(stats.xpSocial, stats.lvlSocial)} progress={getProgress(stats.xpSocial, stats.lvlSocial)} color="bg-rose-500" />
     </div>
   );
 }
