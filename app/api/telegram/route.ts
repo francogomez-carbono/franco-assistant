@@ -2,45 +2,41 @@ import { Bot, webhookCallback } from "grammy";
 import { PrismaClient } from "@prisma/client";
 import OpenAI from "openai";
 
+// 1. AJUSTE CLAVE: Pedimos hasta 60 segundos a Vercel (en plan Hobby a veces lo limita a 10s, pero esto ayuda)
+export const maxDuration = 60; 
 export const dynamic = 'force-dynamic';
 
 const token = process.env.TELEGRAM_TOKEN;
 const bot = token ? new Bot(token) : null;
+// Instanciamos Prisma fuera del handler para reusar la conexión (Mejora velocidad)
 const prisma = new PrismaClient();
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const SYSTEM_PROMPT = `
-Eres el asistente personal de Franco. Tu rol no es solo registrar datos, sino ser un COMPAÑERO de productividad.
-Tu tono debe ser: Natural, breve, motivador y directo. Puedes usar modismos argentinos suaves ("Dale", "Bien ahí", "Che").
+Eres el asistente personal de Franco. Tu rol es ser un COMPAÑERO de productividad.
+Tono: Natural, breve, motivador, argentino suave.
 
 TU TAREA:
-1. Analiza el input para extraer datos estructurados (JSON).
-2. Genera una respuesta de texto ("reply") conversacional y empática para Franco basada en lo que él dijo.
+1. Analiza el input y extrae JSON.
+2. Genera una respuesta ("reply") conversacional.
 
-REGLAS DE RESPUESTA ("reply"):
-- Si empieza a trabajar: Deséale foco y recuérdale que avise al terminar.
-- Si termina: Felicítalo y cierra el tema.
-- Si come/bebe: Confirma de forma casual.
-- Si se siente mal: Muestra empatía breve.
-
-CATEGORÍAS DE DEDUCCIÓN:
-1. PLATA: Trabajo, Coding, Negocios.
-2. PENSAR: Estudio, Lectura, Planificación.
-3. FISICO: Entrenar, Salud, Dormir.
-4. SOCIAL: Relaciones, Salidas.
+CATEGORÍAS:
+1. PLATA (Trabajo, Coding, Dinero)
+2. PENSAR (Estudio, Leer, Planear)
+3. FISICO (Entrenar, Salud, Dormir)
+4. SOCIAL (Relaciones, Salidas)
 
 FORMATO JSON (ESTRICTO):
 {
   "events": [
     {
       "type": "estado" | "consumo" | "ciclo_inicio" | "ciclo_fin" | "nota",
-      "reply": "Tu respuesta conversacional aquí",
-      ... datos específicos del tipo ...
+      "reply": "Texto breve aquí",
+      ...datos especificos...
     }
   ]
 }
-
-DATOS ESPECÍFICOS POR TIPO:
+DATOS ESPECIFICOS:
 - estado: { "energia": 1-5, "concentracion": 1-5, "resumen": "string" }
 - consumo: { "clase": "COMIDA" | "LIQUIDO", "descripcion": "string", "cantidad": number | null }
 - ciclo_inicio: { "tarea": "string", "pilar": "PLATA" | "PENSAR" | "FISICO" | "SOCIAL" }
@@ -52,26 +48,30 @@ const handleMessage = async (ctx: any) => {
     if (!ctx.message.text) return;
     const text = ctx.message.text;
     
-    await bot?.api.sendChatAction(ctx.chat.id, "typing");
+    console.log(`📩 Mensaje recibido: ${text}`); // Log para debug
+
+    // Feedback visual rápido (para que Telegram sepa que estamos vivos)
+    await bot?.api.sendChatAction(ctx.chat.id, "typing").catch(() => {});
 
     try {
+        // 2. AJUSTE CLAVE: Limitamos max_tokens para que GPT responda más rápido
         const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini",
             messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: text }],
-            temperature: 0.7, // Un poco más de creatividad para la charla
+            temperature: 0.7,
+            max_tokens: 300, // No dejes que escriba infinito
             response_format: { type: "json_object" }
         });
 
         const raw = completion.choices[0].message.content || "{}";
         
-        // Limpieza de JSON
+        // Limpieza JSON
         const firstBrace = raw.indexOf('{');
         const lastBrace = raw.lastIndexOf('}');
         
         let data;
         if (firstBrace !== -1 && lastBrace !== -1) {
-            const cleanJson = raw.substring(firstBrace, lastBrace + 1);
-            data = JSON.parse(cleanJson);
+            data = JSON.parse(raw.substring(firstBrace, lastBrace + 1));
         } else {
             data = JSON.parse(raw);
         }
@@ -79,8 +79,10 @@ const handleMessage = async (ctx: any) => {
         const eventos = data.events || [data]; 
         let respuestasArray: string[] = [];
 
+        console.log(`🧠 IA procesó ${eventos.length} eventos. Guardando en DB...`);
+
+        // Guardado en DB
         for (const evento of eventos) {
-            // Usamos la respuesta generada por la IA
             if (evento.reply) respuestasArray.push(evento.reply);
 
             switch (evento.type) {
@@ -98,18 +100,20 @@ const handleMessage = async (ctx: any) => {
                     if (ultimo) {
                         await prisma.logCiclo.update({ where: { id: ultimo.id }, data: { fin: new Date(), estado: "COMPLETADO", resultado: evento.resultado } });
                     } else {
-                        // Si la IA trató de cerrar un ciclo pero no había uno en DB, agregamos una nota visual
-                        respuestasArray.push("(Nota: No encontré un ciclo abierto en la base de datos, pero registré el cierre).");
+                        // Si no hay ciclo, solo agregamos el texto de respuesta, no fallamos.
+                        console.log("Intento de cierre sin ciclo activo.");
                     }
                     break;
             }
         }
-
+        
+        console.log("💾 Guardado exitoso. Respondiendo...");
         await ctx.reply(respuestasArray.join("\n\n"));
 
     } catch (e) {
-        console.error("ERROR:", e);
-        await ctx.reply("❌ Error procesando. Intentá de nuevo.");
+        console.error("❌ ERROR FATAL:", e);
+        // Si falla, avisa al usuario para que sepa que no se guardó
+        await ctx.reply("⏱️ El sistema tardó demasiado (posiblemente la base de datos se estaba despertando). Por favor, probá enviar el mensaje de nuevo.");
     }
 };
 
