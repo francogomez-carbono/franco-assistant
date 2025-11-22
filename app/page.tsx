@@ -1,239 +1,72 @@
 import { PrismaClient } from "@prisma/client";
-import Link from "next/link";
-
-export const dynamic = 'force-dynamic';
+import { DashboardHeader } from "@/components/dashboard/header";
+import { StatsGrid } from "@/components/dashboard/stats-grid";
+import { ActivityFeed } from "@/components/dashboard/activity-feed";
+import { EnergyChart, ProductivityHeatmap } from "@/components/dashboard/charts"; 
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const prisma = new PrismaClient();
-
-const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+export const dynamic = 'force-dynamic';
 
 async function getData() {
-  const stats = await prisma.userStats.findFirst() || { 
-    xpPlata: 0, lvlPlata: 1, xpPensar: 0, lvlPensar: 1, 
-    xpFisico: 0, lvlFisico: 1, xpSocial: 0, lvlSocial: 1 
-  };
-
-  // 1. Logros (Ciclos Completados)
-  const ciclos = await prisma.logCiclo.findMany({
-    where: { estado: 'COMPLETADO' },
-    take: 15,
-    orderBy: { fin: 'desc' }
+  const user = await prisma.user.findFirst({
+    where: { stats: { isNot: null } }, 
+    include: {
+      stats: true,
+      logsCiclo: { 
+        orderBy: { inicio: 'desc' }, 
+        take: 100,
+        where: { estado: 'COMPLETADO' }
+      },
+      logsEstado: {
+        orderBy: { timestamp: 'asc' },
+        take: 30,
+      }
+    }
   });
+  return user;
+}
 
-  // 2. Inicios de Protocolo (Adicciones recientes) - CORRECCIÓN: Ahora los buscamos para la Home
-  const adiccionesRaw = await prisma.addiction.findMany({
-    take: 5,
-    orderBy: { inicio: 'desc' }
-  });
+export default async function Dashboard() {
+  const user = await getData();
 
-  // Formateamos adicciones como si fueran logs para mezclarlos en la lista
-  const protocolos = adiccionesRaw.map(a => ({
-    id: `add-${a.id}`, // ID ficticio para key
-    tarea: `Protocolo: Dejar ${capitalize(a.nombre)}`,
-    xpGanada: 50, // Valor fijo de inicio
-    fecha: a.inicio,
-    esProtocolo: true // Flag para icono especial si quisieras
+  if (!user || !user.stats) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-neutral-950 text-neutral-400">
+        <div className="text-center">
+          <h2 className="text-xl font-bold mb-2">Esperando conexión...</h2>
+          <p>Envía <code>/nivel</code> a tu bot de Telegram para iniciar.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const energyData = user.logsEstado.map(log => ({
+    fecha: log.timestamp.toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric' }),
+    energia: log.energia || 0,
+    foco: log.concentracion || 0
   }));
 
-  // Unimos y ordenamos por fecha
-  const logrosUnificados = [
-    ...ciclos.map(c => ({ ...c, fecha: c.fin })),
-    ...protocolos
-  ].sort((a, b) => new Date(b.fecha!).getTime() - new Date(a.fecha!).getTime()).slice(0, 15);
-
-  // 3. Adicciones activas para el Tracker
-  const adiccionesActivas = await prisma.addiction.findMany({
-    orderBy: { ultimoRelapso: 'asc' }
-  });
-
-  return { stats, logros: logrosUnificados, adicciones: adiccionesActivas };
-}
-
-function calcularNivelGlobal(totalXP: number) {
-  let nivel = 1;
-  let costo = 100;
-  let xp = totalXP;
-  while (xp >= costo) {
-    xp -= costo;
-    nivel++;
-    costo = nivel * 100;
-  }
-  return { nivel, xpRestante: xp, proximoNivel: costo };
-}
-
-function formatDuration(fecha: Date) {
-  const ahora = new Date();
-  const diffMs = ahora.getTime() - new Date(fecha).getTime();
-  const horas = Math.floor(diffMs / (1000 * 60 * 60));
-  
-  if (horas < 24) return `${horas}hs`;
-  const dias = Math.floor(horas / 24);
-  const horasRestantes = horas % 24;
-  return `${dias}d ${horasRestantes}hs`;
-}
-
-export default async function Home() {
-  const { stats, logros, adicciones } = await getData();
-  
-  const totalXP = stats.xpPlata + stats.xpPensar + stats.xpFisico + stats.xpSocial;
-  const global = calcularNivelGlobal(totalXP);
-
-  const getProgress = (xp: number, lvl: number) => {
-    const meta = lvl * 100;
-    const porcentaje = Math.min(100, Math.round((xp / meta) * 100));
-    return { porcentaje, meta };
-  };
-
-  const plata = getProgress(stats.xpPlata, stats.lvlPlata);
-  const pensar = getProgress(stats.xpPensar, stats.lvlPensar);
-  const fisico = getProgress(stats.xpFisico, stats.lvlFisico);
-  const social = getProgress(stats.xpSocial, stats.lvlSocial);
-
-  const porcentajeGlobal = global.proximoNivel > 0 
-    ? Math.min(100, Math.round((global.xpRestante / global.proximoNivel) * 100))
-    : 0;
-
   return (
-    <main className="min-h-screen bg-[#050505] text-white font-sans selection:bg-purple-500/30 pb-20">
-      <div className="max-w-md mx-auto flex flex-col p-5">
-        
-        {/* HEADER */}
-        <header className="mb-6 pt-4 text-center">
-          <div className="relative inline-block mb-4">
-            {/* H1 Restaurado con Gradiente */}
-            <h1 className="text-4xl font-black tracking-tighter bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 bg-clip-text text-transparent">
-              LIFE OS
-            </h1>
-            <span className="absolute -top-1 -right-6 bg-[#111] text-[9px] px-1.5 py-0.5 rounded border border-[#333] text-neutral-400">BETA</span>
-          </div>
-          
-          <div className="bg-[#111] border border-[#222] p-5 rounded-2xl shadow-2xl relative overflow-hidden group">
-            <div className="flex justify-between items-center mb-3 relative z-10">
-              <div className="text-left">
-                <p className="text-lg font-bold text-white">FRANCO</p>
-              </div>
-              <div className="text-right flex items-baseline gap-1.5">
-                <span className="text-xs font-bold text-neutral-600 tracking-widest">LVL</span>
-                <p className="text-2xl font-black text-yellow-400 leading-none">{global.nivel}</p>
-              </div>
-            </div>
-            
-            <div className="relative z-10">
-                <div className="flex justify-between text-[10px] text-neutral-600 font-mono mb-1.5">
-                    <span>XP TOTAL: {totalXP}</span>
-                    <span>{global.xpRestante} / {global.proximoNivel}</span>
-                </div>
-                <div className="h-2 w-full bg-[#000] rounded-full overflow-hidden border border-[#222]">
-                    <div 
-                        className="h-full bg-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.4)] transition-all duration-1000"
-                        style={{ width: `${porcentajeGlobal}%` }} 
-                    />
-                </div>
-            </div>
-          </div>
-        </header>
+    <main className="min-h-screen bg-neutral-950 p-8 font-sans">
+      <DashboardHeader />
+      <StatsGrid stats={user.stats} />
+      
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7 mb-4">
+        <EnergyChart data={energyData} />
+        <ProductivityHeatmap logs={user.logsCiclo} />
+      </div>
 
-        {/* STATS GRID */}
-        <div className="space-y-3 mb-8">
-          <StatCard emoji="💰" title="PLATA" lvl={stats.lvlPlata} xp={stats.xpPlata} meta={plata.meta} progress={plata.porcentaje} color="bg-emerald-500" />
-          <StatCard emoji="🧠" title="PENSAR" lvl={stats.lvlPensar} xp={stats.xpPensar} meta={pensar.meta} progress={pensar.porcentaje} color="bg-blue-500" />
-          <StatCard emoji="💪" title="FÍSICO" lvl={stats.lvlFisico} xp={stats.xpFisico} meta={fisico.meta} progress={fisico.porcentaje} color="bg-red-500" />
-          <StatCard emoji="❤️" title="SOCIAL" lvl={stats.lvlSocial} xp={stats.xpSocial} meta={social.meta} progress={social.porcentaje} color="bg-pink-500" />
-        </div>
-
-        {/* DETOX TRACKER */}
-        {adicciones.length > 0 && (
-          <section className="mb-8">
-            <h3 className="text-[#444] text-[10px] font-bold tracking-[0.2em] mb-4 uppercase text-left">Protocolos Activos 🛡️</h3>
-            <div className="grid grid-cols-1 gap-3">
-              {adicciones.map((adiccion) => {
-                const ahora = new Date();
-                const diffMs = ahora.getTime() - new Date(adiccion.ultimoRelapso).getTime();
-                const horasActuales = diffMs / (1000 * 60 * 60);
-                const porcentaje = adiccion.recordHoras > 0 
-                  ? Math.min(100, (horasActuales / adiccion.recordHoras) * 100) 
-                  : 0;
-
-                return (
-                  <div key={adiccion.id} className="bg-gradient-to-b from-[#151515] to-[#0a0a0a] border border-[#222] p-4 rounded-xl">
-                    <div className="flex justify-between mb-2">
-                      <span className="text-xs font-bold text-neutral-300 uppercase tracking-wide">{adiccion.nombre}</span>
-                      <span className="text-[10px] font-bold text-neutral-500 bg-[#111] px-1.5 py-0.5 rounded border border-[#222]">RÉCORD: {(adiccion.recordHoras / 24).toFixed(1)}d</span>
-                    </div>
-                    <div className="flex items-baseline gap-2 mb-3">
-                      <span className="text-2xl font-black text-white tracking-tight">{formatDuration(adiccion.ultimoRelapso)}</span>
-                      <span className="text-xs text-neutral-600 font-medium">sin recaídas</span>
-                    </div>
-                    <div className="relative h-1.5 w-full bg-[#1a1a1a] rounded-full overflow-hidden border border-[#222]">
-                      <div className="absolute top-0 left-0 h-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)] transition-all duration-1000" style={{ width: `${porcentaje}%` }} />
-                    </div>
-                    <p className="text-[9px] text-right text-neutral-600 mt-1.5 font-mono">{porcentaje.toFixed(0)}% del récord</p>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        )}
-
-        {/* BITÁCORA SCROLLEABLE */}
-        <section className="border-t border-[#222] pt-8">
-          <div className="flex items-center justify-center mb-6 opacity-50">
-            <span className="text-[10px] uppercase tracking-widest text-neutral-500">▼ Historial ▼</span>
-          </div>
-
-          <div className="space-y-2">
-            {logros.length === 0 ? (
-              <div className="text-neutral-800 text-xs text-center py-8 border border-dashed border-[#222] rounded-lg">
-                Sin actividad reciente.
-              </div>
-            ) : (
-              logros.map((log) => (
-                <div key={log.id} className="bg-[#050505] border border-[#222] p-3 rounded-lg flex items-center justify-between">
-                  <div className="flex items-center gap-3 overflow-hidden">
-                    {/* Tick Verde Circular */}
-                    <div className="w-5 h-5 min-w-[20px] rounded-full border border-green-900/30 bg-green-900/10 flex items-center justify-center">
-                      <span className="text-[10px] text-green-500">✓</span>
-                    </div>
-                    {/* Texto Blanco y Truncado */}
-                    <span className="text-neutral-200 text-xs font-medium truncate max-w-[200px]">{log.tarea}</span>
-                  </div>
-                  {/* Badge de XP Oscuro */}
-                  <div className="bg-[#111] border border-[#222] px-2 py-1 rounded">
-                    <span className="text-[10px] font-bold text-[#666]">+{log.xpGanada} XP</span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
-
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
+        <ActivityFeed logs={user.logsCiclo} />
+        <Card className="border-neutral-800 bg-neutral-900/50 text-neutral-100">
+          <CardHeader><CardTitle className="text-sm text-neutral-400">Control de Dopamina</CardTitle></CardHeader>
+          <CardContent className="flex flex-col items-center justify-center h-[150px] text-neutral-600 text-sm">
+             <p>Sistema Activo 🛡️</p>
+             <p className="text-xs mt-2">Sin recaídas recientes.</p>
+          </CardContent>
+        </Card>
       </div>
     </main>
-  );
-}
-
-function StatCard({ emoji, title, lvl, xp, meta, progress, color }: any) {
-  const link = `/${title.toLowerCase()}`;
-  return (
-    <Link href={link} className="block">
-      <div className="bg-[#111] border border-[#222] p-4 rounded-xl shadow-sm hover:border-[#444] hover:bg-[#151515] transition-all cursor-pointer group">
-        <div className="flex justify-between items-center mb-3">
-          <div className="flex items-center gap-3">
-            <div className="text-xl bg-[#1a1a1a] w-10 h-10 flex items-center justify-center rounded-lg border border-[#2a2a2a] group-hover:scale-110 transition-transform">{emoji}</div>
-            <div>
-              <h2 className="font-bold text-sm text-neutral-200 tracking-wide group-hover:text-white transition-colors">{title}</h2>
-              <p className="text-[10px] text-neutral-500 font-bold">NIVEL <span className="text-white">{lvl}</span></p>
-            </div>
-          </div>
-          <div className="text-right">
-            <p className="text-[10px] text-neutral-500 font-bold mb-0.5">XP</p>
-            <p className="text-xs font-mono text-neutral-400">{xp} <span className="text-[#333]">/ {meta}</span></p>
-          </div>
-        </div>
-        <div className="h-2 w-full bg-[#000] rounded-full overflow-hidden border border-[#222]">
-          <div className={`h-full ${color} transition-all duration-700 ease-out`} style={{ width: `${progress}%` }} />
-        </div>
-      </div>
-    </Link>
   );
 }
