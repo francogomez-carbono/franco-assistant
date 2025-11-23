@@ -47,21 +47,21 @@ export default async function FinancePage() {
   const recentExpenses = transactions.filter(t => t.type === 'GASTO').slice(0, 5);
 
   return (
-    <div className="p-6 space-y-6 min-h-screen bg-black"> {/* Fondo negro para contrastar las cards zinc-950 */}
-      
-      {/* Título estilo Dashboard General */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight text-white">Plata</h1>
-      </div>
+    <div className="p-6 space-y-6 min-h-screen bg-black text-white">
+      {/* TITULO GRANDE TIPO GENERAL */}
+      <header>
+        <h1 className="text-3xl font-bold tracking-tight mb-1">Plata</h1>
+        <p className="text-zinc-500 text-sm">Gestión financiera y nivel de riqueza.</p>
+      </header>
 
-      {/* 1. Barra de XP (Revisar si quieres quitarle el título grande y dejarla minimalista como las Lvl 1) */}
+      {/* 1. Barra de XP (Ahora más compacta) */}
       <XPBar 
         level={userStats?.lvlPlata || 1} 
         currentXP={userStats?.xpPlata || 0} 
-        nextLevelXP={100 * (userStats?.lvlPlata || 1)}
+        nextLevelXP={100 * (userStats?.lvlPlata || 1)} 
       />
 
-      {/* 2. KPIs */}
+      {/* 2. KPIs (Ya estaban bien) */}
       <KPIGrid 
         balance={balance} 
         income={totalIncome} 
@@ -69,25 +69,15 @@ export default async function FinancePage() {
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* 3. Gráfico Principal */}
+        {/* 3. Gráficos (Ahora con headers blancos e íconos) */}
         <CashFlowChart data={barChartData} />
-        
-        {/* 4. Distribución de Gastos */}
         <ExpenseDistribution data={pieChartData} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* 5. Listas de Transacciones */}
-        <TransactionList 
-          title="Últimos Ingresos" 
-          type="income" 
-          transactions={recentIncome} 
-        />
-        <TransactionList 
-          title="Últimos Gastos" 
-          type="expense" 
-          transactions={recentExpenses} 
-        />
+        {/* 5. Listas */}
+        <TransactionList title="Últimos Ingresos" type="income" transactions={recentIncome} />
+        <TransactionList title="Últimos Gastos" type="expense" transactions={recentExpenses} />
       </div>
     </div>
   );
