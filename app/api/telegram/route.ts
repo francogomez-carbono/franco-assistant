@@ -10,7 +10,7 @@ const token = process.env.TELEGRAM_TOKEN;
 const bot = token ? new Bot(token) : null;
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// --- HELPER: SANITIZAR NOMBRES ---
+// --- HELPERS ---
 function getXpFieldName(pilar: string) {
   const cleanPilar = pilar.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   return `xp${cleanPilar.charAt(0).toUpperCase() + cleanPilar.slice(1).toLowerCase()}`;
@@ -21,11 +21,9 @@ function getLvlFieldName(pilar: string) {
   return `lvl${cleanPilar.charAt(0).toUpperCase() + cleanPilar.slice(1).toLowerCase()}`;
 }
 
-// --- HELPER: LOGICA LEVEL UP ---
 async function checkLevelUp(userId: string, pilar: string) {
   const xpField = getXpFieldName(pilar);
   const lvlField = getLvlFieldName(pilar);
-
   const stats: any = await prisma.userStats.findUnique({ where: { userId } });
   if (!stats) return "";
 
@@ -51,46 +49,42 @@ async function checkLevelUp(userId: string, pilar: string) {
   return "";
 }
 
-// --- HELPER: OBTENER USUARIO ---
 async function getUser(ctx: any) {
   const telegramId = ctx.from?.id.toString();
   if (!telegramId) return null;
-
-  let user = await prisma.user.findUnique({
-    where: { telegramId },
-    include: { stats: true }
-  });
-
+  let user = await prisma.user.findUnique({ where: { telegramId }, include: { stats: true } });
   if (!user) {
-    user = await prisma.user.create({
-      data: {
-        telegramId,
-        stats: { create: {} }
-      },
-      include: { stats: true }
-    });
+    user = await prisma.user.create({ data: { telegramId, stats: { create: {} } }, include: { stats: true } });
   }
   return user;
 }
 
+// --- PROMPT MEJORADO ---
 const SYSTEM_PROMPT_LOGGER = `
-Rol: Gamemaster y Asistente.
-Tarea: Estructurar datos y asignar XP.
-REGLAS CRÍTICAS:
-1. ENTRENAMIENTO: Si dice "4 series de 12", MULTIPLICA (4*12=48) y ponlo en 'reps'.
-2. DESCRIPTION: Mantén el detalle original.
+Rol: Asistente de base de datos personal.
+Tarea: Convertir lenguaje natural a JSON estricto.
+
+REGLAS IMPORTANTES:
+1. FINANZAS: Si hay dinero involucrado (gasto, ingreso, pago, compra, precio), SIEMPRE usa type="finanzas".
+2. PENSAR: Lectura, estudio, trabajo profundo.
+3. FISICO: Entrenar, comer, dormir.
+4. SOCIAL: Salidas, familia, amigos.
+
 JSON (Strict):
 {
   "events": [
     {
-      "type": "estado"|"consumo"|"ciclo_inicio"|"ciclo_fin"|"idea"|"ejercicio_reps"|"ayuno"|"sueno"|"nota"|"addiction_start"|"addiction_relapse"|"social",
-      "reply": "Confirmación empática muy breve",
-      "energia": 1-5, "concentracion": 1-5, "resumen": "txt",
-      "clase": "COMIDA"|"LIQUIDO"|"AYUNO"|"SUENO", "descripcion": "txt", "cantidad": number,
-      "tarea": "txt", "pilar": "PLATA"|"PENSAR"|"FISICO"|"SOCIAL",
-      "resultado": "txt", "texto": "txt", "tags_idea": "txt",
-      "reps": number, "horas_ayuno": number, "horas_sueno": number, "vicio": "txt",
-      "persona": "txt", "duracion_social": number, "valoracion_social": 1-5
+      "type": "estado"|"finanzas"|"ciclo_inicio"|"ciclo_fin"|"ejercicio_reps"|"consumo"|"nota"|"social",
+      "reply": "Texto corto confirmando la acción",
+      "pilar": "PLATA"|"PENSAR"|"FISICO"|"SOCIAL",
+      
+      // Campos opcionales según tipo
+      "monto": number,
+      "tipo_financiero": "GASTO" | "INGRESO",
+      "categoria": "txt",
+      "descripcion": "txt",
+      "cantidad": number,
+      "reps": number
     }
   ]
 }
@@ -99,12 +93,9 @@ JSON (Strict):
 const handleMessage = async (ctx: any) => {
   if (!ctx.message?.text) return;
 
-  // --- MODO TEST: EVITAR LLAMAR A TELEGRAM REAL ---
-  // Si el ID es el del test, reemplazamos la función reply por un console.log
+  // MODO TEST
   if (ctx.chat.id === 999999999) {
-    ctx.reply = async (text: string) => {
-      console.log(`[TEST MODE] Bot Reply simulado: ${text}`);
-    };
+    ctx.reply = async (text: string) => { console.log(`[TEST] Bot: ${text}`); };
   }
   
   const user = await getUser(ctx);
@@ -117,10 +108,13 @@ const handleMessage = async (ctx: any) => {
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [{ role: "system", content: SYSTEM_PROMPT_LOGGER }, { role: "user", content: text }],
-      temperature: 0.5, max_tokens: 400, response_format: { type: "json_object" }
+      temperature: 0.1, // Bajamos temperatura para que sea más estricto
+      max_tokens: 400, 
+      response_format: { type: "json_object" }
     });
 
     const raw = completion.choices[0].message.content || "{}";
+    console.log("🧠 IA Response:", raw); // <--- DEBUG: VER ESTO EN CONSOLA SI FALLA
     const data = JSON.parse(raw);
     const eventos = data.events || [data]; 
     let respuestasArray: string[] = [];
@@ -130,16 +124,59 @@ const handleMessage = async (ctx: any) => {
       let pilarXP = evento.pilar || "FISICO"; 
       let notaExtra = "";
 
-      // Logica de Eventos
+      // --- FORZAR TIPO SI HAY MONTO ---
+      if (evento.monto && evento.type !== "finanzas") {
+        evento.type = "finanzas";
+        pilarXP = "PLATA";
+      }
+
       switch (evento.type) {
+        case "finanzas":
+          xpGanada = 10; 
+          pilarXP = "PLATA"; // Aseguramos el pilar
+          await prisma.financialTransaction.create({
+            data: {
+              userId,
+              amount: evento.monto || 0,
+              type: evento.tipo_financiero || "GASTO",
+              category: evento.categoria || "Varios",
+              description: evento.descripcion || text
+            }
+          });
+          break;
+
         case "ejercicio_reps":
-          const reps = evento.reps || 0; pilarXP = "FISICO";
-          if (reps >= 1) { 
-            xpGanada = reps; 
-            await prisma.logCiclo.create({ data: { userId, tarea: `Reps: ${evento.descripcion}`, pilar: "FISICO", estado: "COMPLETADO", resultado: `${reps} reps`, xpGanada: xpGanada } }); 
+          if (evento.reps) { 
+            xpGanada = evento.reps; 
+            pilarXP = "FISICO";
+            await prisma.logCiclo.create({ data: { userId, tarea: `Reps: ${evento.descripcion}`, pilar: "FISICO", estado: "COMPLETADO", resultado: `${evento.reps} reps`, xpGanada } }); 
           }
           break;
-        // Puedes agregar más casos aquí si el test lo requiere
+          
+        case "ciclo_inicio":
+          xpGanada = 15; 
+          await prisma.logCiclo.create({ data: { userId, tarea: evento.descripcion || "Foco", pilar: evento.pilar || "PENSAR", estado: "EN_PROGRESO", xpGanada } });
+          break;
+          
+        case "consumo":
+          xpGanada = 10; 
+          await prisma.logConsumo.create({ data: { userId, tipo: "COMIDA", descripcion: evento.descripcion, cantidad: evento.cantidad, xpGanada } });
+          break;
+
+        // CASO SOCIAL (NUEVO)
+        case "social":
+          xpGanada = 30; // XP por defecto por socializar
+          pilarXP = "SOCIAL";
+          await prisma.logSocial.create({
+            data: {
+              userId,
+              tipo: "INTERACCION",
+              persona: evento.persona || "Alguien",
+              actividad: evento.descripcion || text,
+              xpGanada: xpGanada
+            }
+          });
+          break;
       }
 
       // Sumar XP
@@ -162,8 +199,7 @@ const handleMessage = async (ctx: any) => {
     await ctx.reply(respuestasArray.join("\n\n"), { parse_mode: "Markdown" });
 
   } catch (e) {
-    console.error("ERROR LÓGICO:", e);
-    // Intentamos avisar, pero si falla (ej: usuario test mal configurado), no crasheamos todo
+    console.error("ERROR:", e);
     try { await ctx.reply("⚠️ Error procesando."); } catch (err) {}
   }
 };

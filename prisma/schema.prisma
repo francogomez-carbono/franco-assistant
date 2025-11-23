@@ -1,3 +1,4 @@
+cat <<EOF > prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
@@ -23,17 +24,31 @@ model User {
   logsIdea     LogIdea[]
   questPresets QuestPreset[]
   
-  // NUEVA RELACIÓN (Soluciona el error P1012)
+  // RELACIONES FINANCIERAS Y DOPAMINA
   dopamineLogs DopamineLog[]
+  financials   FinancialTransaction[]
 }
 
 // 🛡️ ESCUDO DE DOPAMINA
 model DopamineLog {
   id        String   @id @default(cuid())
-  fecha     DateTime @default(now()) // Cuándo recaíste
+  fecha     DateTime @default(now())
   motivo    String?  
   userId    String
   user      User     @relation(fields: [userId], references: [id])
+}
+
+// 💰 FINANZAS
+model FinancialTransaction {
+  id          String          @id @default(cuid())
+  timestamp   DateTime        @default(now())
+  amount      Float           
+  type        TransactionType 
+  category    String          
+  description String?         
+  
+  userId      String
+  user        User            @relation(fields: [userId], references: [id])
 }
 
 // 📊 ESTADÍSTICAS
@@ -178,3 +193,8 @@ enum TipoConsumo {
   AYUNO
   SUENO
 }
+enum TransactionType {
+  INGRESO
+  GASTO
+}
+EOF
