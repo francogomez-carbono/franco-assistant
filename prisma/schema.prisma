@@ -13,17 +13,27 @@ model User {
   telegramId String   @unique
   createdAt  DateTime @default(now())
 
-  stats      UserStats? 
-  addictions Addiction[]
-  logsCiclo  LogCiclo[]
-  logsEstado LogEstado[]
-  logsHabito LogHabito[]
-  logsConsumo LogConsumo[]
-  logsSocial LogSocial[]
-  logsIdea   LogIdea[]
-  
-  // RELACIÓN AGREGADA (Soluciona el error P1012)
+  stats        UserStats? 
+  addictions   Addiction[]
+  logsCiclo    LogCiclo[]
+  logsEstado   LogEstado[]
+  logsHabito   LogHabito[]
+  logsConsumo  LogConsumo[]
+  logsSocial   LogSocial[]
+  logsIdea     LogIdea[]
   questPresets QuestPreset[]
+  
+  // NUEVA RELACIÓN (Soluciona el error P1012)
+  dopamineLogs DopamineLog[]
+}
+
+// 🛡️ ESCUDO DE DOPAMINA
+model DopamineLog {
+  id        String   @id @default(cuid())
+  fecha     DateTime @default(now()) // Cuándo recaíste
+  motivo    String?  
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
 }
 
 // 📊 ESTADÍSTICAS
@@ -52,7 +62,6 @@ model UserStats {
   user       User     @relation(fields: [userId], references: [id])
 }
 
-// 🚫 ADICCIONES
 model Addiction {
   id            String   @id @default(cuid())
   nombre        String   
@@ -64,7 +73,6 @@ model Addiction {
   user          User     @relation(fields: [userId], references: [id])
 }
 
-// 🔄 LOGS
 model LogCiclo {
   id          String   @id @default(cuid())
   tarea       String   
@@ -136,7 +144,6 @@ model LogSocial {
   user       User     @relation(fields: [userId], references: [id])
 }
 
-// �� PRESETS DE MISIONES
 model QuestPreset {
   id        String   @id @default(cuid())
   title     String

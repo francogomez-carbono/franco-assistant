@@ -113,3 +113,73 @@ export async function toggleQuest(title: string, xp: number, pilar: string, user
     console.error("Error toggleando misión:", error);
   }
 }
+
+// --- ACCIÓN 3: REGISTRAR RECAÍDA (Resetear Contador) ---
+export async function reportRelapse(userId: string, motivo: string = "General") {
+  try {
+    // 1. Guardar el log de la caída (para saber cuándo fue)
+    await prisma.dopamineLog.create({
+      data: {
+        userId,
+        motivo,
+        fecha: new Date()
+      }
+    });
+
+    // 2. Castigo de XP (Opcional: Restar 100 XP por caer)
+    // await updateXP(userId, "FISICO", -100); 
+
+    revalidatePath("/", "layout");
+  } catch (error) {
+    console.error("Error reportando recaída:", error);
+  }
+}
+
+// 1. Crear nuevo tracker (Ej: "Azúcar")
+export async function createAddiction(name: string, userId: string) {
+  if (!name) return;
+  await prisma.addiction.create({
+    data: {
+      nombre: name,
+      userId,
+      inicio: new Date(),
+      ultimoRelapso: new Date(), // Empieza en 0
+    }
+  });
+  revalidatePath("/", "layout");
+}
+
+// 2. Recaer en uno específico
+export async function relapseAddiction(id: string, userId: string) {
+  const addiction = await prisma.addiction.findUnique({ where: { id } });
+  if (!addiction) return;
+
+  const now = new Date();
+  const diffTime = Math.abs(now.getTime() - addiction.ultimoRelapso.getTime());
+  const hoursClean = diffTime / (1000 * 60 * 60);
+
+  // Guardamos el récord si fue el mejor intento
+  const newRecord = Math.max(addiction.recordHoras, hoursClean);
+
+  await prisma.addiction.update({
+    where: { id },
+    data: {
+      ultimoRelapso: now,
+      recaidas: { increment: 1 },
+      recordHoras: newRecord
+    }
+  });
+  
+  // Opcional: Guardar en el log histórico también
+  await prisma.dopamineLog.create({
+    data: { userId, fecha: now, motivo: addiction.nombre }
+  });
+
+  revalidatePath("/", "layout");
+}
+
+// 3. Borrar tracker
+export async function deleteAddiction(id: string) {
+  await prisma.addiction.delete({ where: { id } });
+  revalidatePath("/", "layout");
+}
